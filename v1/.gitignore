@@ -1,0 +1,5 @@
+vertex-key.json
+../vertex-key.json
+results/
+__pycache__/
+*.py[cod]

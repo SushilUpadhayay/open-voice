@@ -1,0 +1,31 @@
+text,expected,type
+बैठकको नोट तयार भइसकेको छ।,dictation,clean_dictation
+हामीले आज रिपोर्ट बुझाउनुपर्छ।,dictation,clean_dictation
+भोलि मौसम राम्रो हुने अनुमान छ।,dictation,clean_dictation
+मलाई यो प्रस्ताव मन परेको छ।,dictation,clean_dictation
+ग्राहकले भुक्तानी गरिसकेका छन्।,dictation,clean_dictation
+नयाँ अफिस बानेश्वरमा छ।,dictation,clean_dictation
+"ए... त्यो रिपोर्ट के भन्छन् तयार भइसक्यो जस्तो छ।",dictation,messy_dictation
+हजुर हजुर मैले भन्न खोजेको चाहिँ आज बैठक सकियो।,dictation,messy_dictation
+उम् हामी भोलि होइन पर्सि भेट्छौं।,dictation,messy_dictation
+त्यो काम त्यो काम अहिलेसम्म भएको छैन जस्तो लाग्छ।,dictation,messy_dictation
+अनि ए बजेट बढाउनुपर्ने हुन्छ कि क्या हो।,dictation,messy_dictation
+मेरो मतलब चाहिँ सबै सामान आइसकेका छन्।,dictation,messy_dictation
+रामलाई रिपोर्टको बारेमा इमेल पठाऊ।,command,clear_command
+भोलि बिहान दश बजे बैठक राख।,command,clear_command
+मलाई साँझ पाँच बजे सम्झाऊ।,command,clear_command
+सिताको नम्बर खोज।,command,clear_command
+आजको कार्यक्रम देखाऊ।,command,clear_command
+शुक्रबारको बैठक रद्द गर।,command,clear_command
+ए रामलाई इमेल पठाऊ भोलि होइन शुक्रबार।,command,messy_command
+उम् बैठक राख पर्सि बिहान होइन दिउँसो।,command,messy_command
+मलाई साँझ छ बजे सम्झाऊ अँ पाँच बजे।,command,messy_command
+अनि सिताको त्यो नम्बर खोज न।,command,messy_command
+हजुर एउटा इमेल लेख हाम्रो टिमलाई बैठकको बारेमा।,command,messy_command
+ए आजको कार्यक्रम के के छन् देखाऊ।,command,messy_command
+रामलाई रिपोर्ट तयार भयो भन्नु।,command,ambiguous
+भोलि बैठक छ।,dictation,ambiguous
+इमेल पठाउनुपर्ने छ।,dictation,ambiguous
+सिताले फोन गर्न भनेकी थिइन्।,dictation,ambiguous
+बैठक रद्द भयो।,dictation,ambiguous
+मलाई साँझ सम्झना हुनुपर्छ।,dictation,ambiguous

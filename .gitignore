@@ -1,0 +1,13 @@
+# Virtual environment
+.myvenv/
+
+# Credentials
+vertex-key.json
+
+# Test outputs
+v1/results/
+V1/results/
+
+# Python cache
+__pycache__/
+*.py[cod]

@@ -1,0 +1,1906 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Voice in, response out: how the Open Voice Layer works</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Archivo:wdth,wght@62..125,400..800&family=JetBrains+Mono:wght@400;500&family=Noto+Sans+Devanagari:wght@400;600&display=swap" rel="stylesheet">
+<style>
+:root{
+  --bg:#E6EBF1; --panel:#F8FAFC; --ink:#18213A; --muted:#58637A; --line:#C7D0DC; --soft:#DDE3EB;
+  --per:#0E857A; --s1:#D99A00; --s2:#4348C9; --out:#C23B6C;
+  --per-t:rgba(14,133,122,.14); --s1-t:rgba(217,154,0,.18); --s2-t:rgba(67,72,201,.13); --out-t:rgba(194,59,108,.13);
+  --sans:"Archivo","Noto Sans Devanagari",system-ui,-apple-system,"Segoe UI",sans-serif;
+  --mono:"JetBrains Mono",ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;
+  box-sizing:border-box;
+  padding-top:env(safe-area-inset-top,0px); padding-bottom:env(safe-area-inset-bottom,0px);
+  color-scheme:light;
+}
+@media (prefers-color-scheme:dark){
+  :root:not([data-theme="light"]){
+    --bg:#121826; --panel:#1A2233; --ink:#E7ECF5; --muted:#9AA6BC; --line:#33405A; --soft:#24304A;
+    --per:#2BC2B1; --s1:#F2B635; --s2:#8B8FFF; --out:#F06B9C;
+    --per-t:rgba(43,194,177,.16); --s1-t:rgba(242,182,53,.18); --s2-t:rgba(139,143,255,.17); --out-t:rgba(240,107,156,.16);
+    color-scheme:dark;
+  }
+}
+:root[data-theme="dark"]{
+  --bg:#121826; --panel:#1A2233; --ink:#E7ECF5; --muted:#9AA6BC; --line:#33405A; --soft:#24304A;
+  --per:#2BC2B1; --s1:#F2B635; --s2:#8B8FFF; --out:#F06B9C;
+  --per-t:rgba(43,194,177,.16); --s1-t:rgba(242,182,53,.18); --s2-t:rgba(139,143,255,.17); --out-t:rgba(240,107,156,.16);
+  color-scheme:dark;
+}
+*,*::before,*::after{box-sizing:inherit}
+html{scroll-padding-top:env(safe-area-inset-top,0px)}
+body{margin:0;background:var(--bg);color:var(--ink);font-family:var(--sans);font-size:15px;line-height:1.5}
+.wrap{max-width:1280px;margin:0 auto;padding:28px 20px 48px}
+header.top{display:grid;grid-template-columns:1fr auto;gap:16px;align-items:end;margin-bottom:18px}
+h1{font-stretch:68%;font-weight:800;font-size:clamp(34px,5.4vw,64px);line-height:.95;letter-spacing:-.01em;margin:0}
+.lede{margin:10px 0 0;max-width:62ch;color:var(--muted)}
+.themebtn{border:1px solid var(--line);background:var(--panel);color:var(--ink);border-radius:999px;padding:6px 12px;font:inherit;font-size:13px;cursor:pointer}
+button,select{font:inherit}
+:focus-visible{outline:2px solid var(--s2);outline-offset:2px}
+
+.controls{display:flex;flex-wrap:wrap;gap:10px 18px;align-items:center;background:var(--panel);border:1px solid var(--line);border-radius:14px;padding:12px 14px;margin-bottom:14px}
+.group{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+.group > .lab{font-size:13px;color:var(--muted)}
+.seg{display:inline-flex;border:1px solid var(--line);border-radius:10px;overflow:hidden}
+.seg button{border:0;background:transparent;color:var(--ink);padding:7px 12px;cursor:pointer;font-size:14px}
+.seg button + button{border-left:1px solid var(--line)}
+.seg button[aria-pressed="true"]{background:var(--ink);color:var(--panel)}
+.btn{border:1px solid var(--ink);background:var(--ink);color:var(--panel);border-radius:10px;padding:7px 14px;cursor:pointer;font-weight:600}
+.btn.ghost{background:transparent;color:var(--ink);border-color:var(--line);font-weight:500}
+.check{display:inline-flex;gap:6px;align-items:center;font-size:14px;cursor:pointer}
+select{background:var(--panel);color:var(--ink);border:1px solid var(--line);border-radius:8px;padding:6px 8px}
+
+.ribbon{background:var(--panel);border:1px solid var(--line);border-radius:14px;padding:12px 14px 14px;margin-bottom:14px}
+.ribhead{display:flex;justify-content:space-between;gap:12px;flex-wrap:wrap;font-size:13px;color:var(--muted);margin-bottom:6px}
+.clock{font-family:var(--mono);color:var(--ink)}
+.phase{font-weight:600;color:var(--ink)}
+canvas#wave{width:100%;height:64px;display:block}
+.transcript{min-height:30px;margin-top:8px;font-size:17px;line-height:1.5}
+.transcript .w{color:var(--ink)}
+.transcript .w.unstable{color:var(--muted)}
+.transcript .w.lat{background:var(--s1-t);border-bottom:2px solid var(--s1);border-radius:3px;padding:0 2px}
+.transcript .w.fixed{background:var(--per-t);border-bottom:2px solid var(--per);border-radius:3px;padding:0 2px}
+.transcript .empty{color:var(--muted);font-size:14px}
+
+.grid{display:grid;grid-template-columns:repeat(12,1fr);gap:14px}
+.panel{background:var(--panel);border:1px solid var(--line);border-radius:14px;padding:14px;min-width:0}
+.panel h2{font-stretch:85%;font-size:19px;margin:0 0 2px;font-weight:700}
+.panel .hint{font-size:13px;color:var(--muted);margin:0 0 10px}
+.map{grid-column:span 7}.stage{grid-column:span 5}
+.timeline{grid-column:span 12}.place{grid-column:span 12}.decide{grid-column:span 6}
+.bus{grid-column:span 6}
+@media (max-width:980px){.map,.stage,.timeline,.decide,.bus{grid-column:span 12}}
+
+svg#map{width:100%;height:auto;display:block}
+.node rect{fill:var(--panel);stroke:var(--line);stroke-width:1.4;transition:fill .15s}
+.node text{fill:var(--ink);font-family:var(--sans)}
+.node .sub{fill:var(--muted);font-size:11px}
+.node .nm{font-weight:700;font-size:13.5px}
+.node{cursor:pointer}
+.node.per.on rect{fill:var(--per-t);stroke:var(--per);stroke-width:2.2}
+.node.s1.on rect{fill:var(--s1-t);stroke:var(--s1);stroke-width:2.2}
+.node.s2.on rect{fill:var(--s2-t);stroke:var(--s2);stroke-width:2.2}
+.node.out.on rect{fill:var(--out-t);stroke:var(--out);stroke-width:2.2}
+.node .dot{opacity:0}
+.node.per .dot{fill:var(--per)}.node.s1 .dot{fill:var(--s1)}.node.s2 .dot{fill:var(--s2)}.node.out .dot{fill:var(--out)}
+.node.on .dot{opacity:1}
+.edge{fill:none;stroke:var(--line);stroke-width:1.6}
+.edge.dash{stroke-dasharray:4 4}
+.edge.on{stroke:var(--muted)}
+.elabel{font-size:11px;fill:var(--muted);font-family:var(--sans)}
+.legend{display:flex;gap:14px;flex-wrap:wrap;font-size:12.5px;color:var(--muted);margin-top:6px}
+.legend i{display:inline-block;width:10px;height:10px;border-radius:3px;margin-right:5px;vertical-align:-1px}
+
+/* stage */
+.appwin{border:1px solid var(--line);border-radius:12px;overflow:hidden;background:var(--bg)}
+.apphead{display:flex;justify-content:space-between;align-items:center;padding:8px 12px;border-bottom:1px solid var(--line);font-size:13px;color:var(--muted);background:var(--panel)}
+.apphead b{color:var(--ink)}
+.msgs{padding:10px 12px;display:flex;flex-direction:column;gap:8px;font-size:14px}
+.msg{max-width:85%;padding:7px 10px;border-radius:10px;background:var(--panel);border:1px solid var(--line)}
+.msg .who{font-size:12px;color:var(--muted)}
+.composer{margin:0 12px 12px;border:1.5px solid var(--line);border-radius:10px;background:var(--panel);padding:10px;min-height:48px;font-size:15px}
+.composer.done{border-color:var(--out)}
+.composer .draft{color:var(--muted)}
+.composer .caret{display:inline-block;width:2px;height:1.1em;background:var(--out);vertical-align:-2px;margin-left:1px;animation:blink 1s steps(1) infinite}
+@keyframes blink{50%{opacity:0}}
+.chips{display:flex;gap:6px;flex-wrap:wrap;margin:10px 12px 0}
+.chip{font-size:12.5px;border:1px solid var(--line);border-radius:999px;padding:3px 9px;background:var(--panel)}
+.chip.s1{border-color:var(--s1);background:var(--s1-t)}
+.chip.per{border-color:var(--per);background:var(--per-t)}
+.scripts{display:flex;gap:6px;flex-wrap:wrap;margin:0 12px 12px}
+.scripts button{border:1px solid var(--line);background:var(--panel);color:var(--ink);border-radius:8px;padding:5px 9px;font-size:13px;cursor:pointer}
+.scripts button[aria-pressed="true"]{border-color:var(--s1);background:var(--s1-t)}
+.scripts small{color:var(--muted)}
+.cal{display:grid;grid-template-columns:repeat(2,1fr);gap:8px;padding:10px 12px}
+.calday{border:1px solid var(--line);border-radius:10px;background:var(--panel);padding:8px;font-size:13px;min-height:70px}
+.calday .d{color:var(--muted);font-size:12px}
+.ev{margin-top:6px;border-left:3px solid var(--s2);padding:3px 7px;background:var(--s2-t);border-radius:4px;font-size:12.5px;transition:opacity .3s}
+.ev.ghost{opacity:.35;border-left-style:dashed}
+.ev.hl{outline:2px solid var(--s1);outline-offset:1px}
+.card{margin:4px 12px 12px;border:1.5px solid var(--out);border-radius:12px;background:var(--panel);padding:12px;font-size:14px}
+.card h3{margin:0 0 8px;font-size:15px;font-stretch:90%}
+.row{display:grid;grid-template-columns:96px 1fr;gap:8px;padding:5px 0;border-top:1px solid var(--soft);align-items:center}
+.row:first-of-type{border-top:0}
+.row .k{color:var(--muted);font-size:12.5px}
+.sk{display:inline-block;height:12px;border-radius:6px;background:var(--soft);width:70%;animation:pulse 1.2s ease-in-out infinite}
+@keyframes pulse{50%{opacity:.45}}
+.okbadge{display:inline-block;font-size:12px;border-radius:999px;padding:1px 8px;background:var(--per-t);border:1px solid var(--per)}
+.cardbtns{display:flex;gap:8px;margin-top:10px;flex-wrap:wrap}
+.cardbtns button{border:1px solid var(--line);background:var(--panel);color:var(--ink);border-radius:8px;padding:6px 12px;cursor:pointer}
+.cardbtns button.primary{background:var(--out);border-color:var(--out);color:#fff}
+.voice{display:flex;gap:12px;align-items:center;margin:0 12px 12px;padding:10px;border:1px dashed var(--line);border-radius:10px;min-height:52px}
+.bars{display:flex;gap:3px;align-items:center;height:28px;flex:none}
+.bars span{width:4px;border-radius:2px;background:var(--out);height:4px;transition:height .12s}
+.caption{font-size:14px}
+.caption .said{color:var(--ink)} .caption .tosay{color:var(--muted)}
+.spk-You{color:var(--per)!important;font-weight:700}.spk-Asha{color:var(--out)!important;font-weight:700}.spk-Bikash{color:var(--s2)!important;font-weight:700}.spk-unk{color:var(--muted)}
+.acts{width:100%;border-collapse:collapse;font-size:13px;margin-top:4px}.acts td{padding:4px 4px;border-top:1px solid var(--soft);vertical-align:top}
+.empty-stage{color:var(--muted);font-size:14px;padding:12px}
+.note{font-size:12.5px;color:var(--muted);margin:8px 12px 12px}
+
+/* timeline */
+.tlhead{display:flex;justify-content:space-between;gap:12px 24px;flex-wrap:wrap;align-items:flex-start}
+.tlhead .hint{max-width:72ch}
+.tlkey{display:flex;gap:16px;font-size:12.5px;color:var(--muted);align-items:center;flex-wrap:wrap;padding-top:4px}
+.tlkey .k{display:inline-block;width:24px;height:12px;border-radius:4px;margin-right:6px;vertical-align:-2px}
+.k.done{background:var(--s1-t);border:1.5px solid var(--s1)}
+.k.run{background:linear-gradient(90deg,var(--s1-t) 55%,transparent 55%);border:1.5px solid var(--s1);box-shadow:0 0 0 3px var(--s1-t)}
+.k.next{border:1.5px dashed var(--muted);opacity:.7}
+.narr{margin:10px 0 14px;padding:10px 14px;border-radius:10px;background:var(--bg);border:1px solid var(--line);font-size:15.5px;min-height:46px;display:flex;flex-wrap:wrap;gap:4px 14px;align-items:center}
+.narr .when{font-family:var(--mono);font-size:12.5px;color:var(--panel);background:var(--ink);border-radius:6px;padding:1px 7px}
+.narr .it{display:inline-flex;gap:6px;align-items:baseline}
+.narr .it i{width:9px;height:9px;border-radius:2px;display:inline-block;align-self:center}
+.narr .ms{font-family:var(--mono);font-size:12px;color:var(--muted)}
+.tlscroll{overflow-x:auto;padding-bottom:4px}
+.gantt{--lh:200px;position:relative;min-width:820px}
+.zones{position:relative;height:56px;margin-left:var(--lh)}
+.zone{position:absolute;top:0;height:26px;border-radius:7px;padding:4px 10px;font-size:12.5px;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.zone.speak{background:var(--soft);color:var(--muted)}
+.zone.after{background:var(--out-t);color:var(--ink)}
+.lane{display:grid;grid-template-columns:var(--lh) 1fr;border-top:1px solid var(--soft)}
+.lh{display:flex;gap:9px;align-items:center;padding:7px 12px 7px 0;line-height:1.25}
+.lh i{flex:none;width:10px;height:10px;border-radius:3px}
+.lh b{display:block;font-weight:700;font-size:13.5px}
+.lh small{display:block;color:var(--muted);font-size:11.5px}
+.track{position:relative;min-height:38px}
+.speakband{position:absolute;top:0;bottom:0;left:0;background:var(--soft);opacity:.5;pointer-events:none}
+.sp{position:absolute;text-align:left;height:24px;border-radius:6px;font-size:12px;line-height:21px;padding:0 7px;white-space:nowrap;overflow:hidden;color:var(--ink);min-width:7px;cursor:pointer;border:1.5px solid var(--line);background:transparent;transition:opacity .2s,box-shadow .2s}
+.sp .fill{position:absolute;left:0;top:0;bottom:0;width:0}
+.sp .tx{position:relative;display:inline-block}
+.sp .d{color:var(--muted);margin-left:6px;font-family:var(--mono);font-size:10.5px}
+.sp.tight .tx{visibility:hidden}
+.sp.per{border-color:var(--per)}.sp.per .fill{background:var(--per-t)}
+.sp.s1{border-color:var(--s1)}.sp.s1 .fill{background:var(--s1-t)}
+.sp.s2{border-color:var(--s2)}.sp.s2 .fill{background:var(--s2-t)}
+.sp.out{border-color:var(--out)}.sp.out .fill{background:var(--out-t)}
+.sp.future{border-style:dashed;opacity:.55}
+.sp.run{box-shadow:0 0 0 3px var(--s1-t);font-weight:600;z-index:2}
+.sp.selected{outline:2px solid var(--ink);outline-offset:2px;z-index:3}
+.overlay{position:absolute;top:56px;bottom:58px;left:var(--lh);right:0;pointer-events:none}
+.relline{position:absolute;top:-56px;bottom:0;border-left:2px dashed var(--out)}
+.now{position:absolute;top:-24px;bottom:0;width:2px;background:var(--ink);z-index:4}
+.nowlab{position:absolute;top:0;left:5px;background:var(--ink);color:var(--panel);font-family:var(--mono);font-size:11px;padding:1px 6px;border-radius:6px;white-space:nowrap}
+.now.flip .nowlab{left:auto;right:5px}
+.axis{position:relative;height:58px;margin-left:var(--lh);border-top:1px solid var(--line)}
+.tick{position:absolute;top:30px;font-size:11px;color:var(--muted);transform:translateX(-50%);white-space:nowrap}
+.mk,.miles .n{display:inline-block;width:20px;height:20px;border-radius:50%;font-size:11px;font-weight:700;line-height:17px;text-align:center;border:1.5px solid var(--muted);background:var(--panel);color:var(--muted);flex:none}
+.mk{position:absolute;top:5px;transform:translateX(-50%)}
+.mk.hit,.miles li.hit .n{background:var(--ink);border-color:var(--ink);color:var(--panel)}
+.miles{list-style:none;display:flex;flex-wrap:wrap;gap:8px 22px;padding:0;margin:12px 0 0;font-size:13.5px}
+.miles li{display:flex;gap:7px;align-items:center;color:var(--muted)}
+.miles li.hit{color:var(--ink)}
+.miles .tm{font-family:var(--mono);font-size:12px;color:var(--muted)}
+.selbox{font-size:14px;margin:14px 0 0;padding:10px 14px;border-left:4px solid var(--line);background:var(--bg);border-radius:0 10px 10px 0;color:var(--muted)}
+.selbox.on{color:var(--ink)}
+.selbox .ms{font-family:var(--mono);font-size:12.5px;color:var(--muted)}
+.race{margin-top:18px;border-top:1px solid var(--line);padding-top:14px}
+.race h3{font-size:16px;margin:0 0 2px;font-weight:700;font-stretch:90%}
+.race .sub{font-size:13px;color:var(--muted);margin:0 0 10px}
+.rrow{display:grid;grid-template-columns:170px 1fr 250px;gap:12px;align-items:center;font-size:13.5px;margin:8px 0}
+.rbar{position:relative;height:22px;background:var(--soft);border-radius:6px}
+.rbar .f,.rbar .f2{position:absolute;top:0;bottom:0;border-radius:6px}
+.rbar .f.v3{background:var(--s1)}.rbar .f2.v3{background:var(--s1-t);border:1.5px solid var(--s1)}
+.rbar .f.v1{background:var(--s2)}
+.rbar .bud{position:absolute;top:-5px;bottom:-5px;border-left:2px solid var(--out)}
+.rrow.cur .rl{font-weight:700}
+.rl em{font-style:normal;color:var(--muted);font-weight:400;font-size:12px}
+.rnum{font-family:var(--mono);font-size:12.5px}
+.verdict{font-size:15px;margin:10px 0 0}
+.verdict b{font-weight:700}
+@media (max-width:640px){.rrow{grid-template-columns:1fr}.rnum{text-align:left}}
+.node.sel rect{stroke:var(--ink)!important;stroke-width:3!important}
+
+/* drawer */
+.drawer{position:fixed;left:0;right:0;bottom:0;z-index:20;background:var(--panel);border-top:1.5px solid var(--ink);box-shadow:0 -10px 30px rgba(10,20,40,.16);padding:10px 16px calc(10px + env(safe-area-inset-bottom,0px))}
+.dwrap{max-width:1280px;margin:0 auto}
+.dstat{display:flex;align-items:center;gap:10px 16px;flex-wrap:wrap}
+.dstat #playBtn{min-width:86px}
+.dinfo{display:flex;flex-direction:column;line-height:1.25;min-width:220px}
+.dphase{font-weight:700;font-size:14px}
+.dclock{font-family:var(--mono);font-size:12px;color:var(--muted)}
+.dprog{flex:1 1 180px;height:8px;background:var(--soft);border-radius:4px;position:relative;overflow:hidden;min-width:140px}
+.dprog i{position:absolute;left:0;top:0;bottom:0;width:0;background:var(--ink);border-radius:4px}
+.drel{position:absolute;top:0;bottom:0;border-left:2px solid var(--out)}
+.tally{font-size:13px;display:flex;gap:6px 14px;flex-wrap:wrap}
+.tally span{white-space:nowrap}
+.tally b{font-family:var(--mono);font-weight:600}
+.tally .lab{color:var(--muted)}
+.dctrl{display:flex;flex-wrap:wrap;gap:10px 18px;align-items:center;margin-top:10px;padding-top:10px;border-top:1px solid var(--soft)}
+.drawer.collapsed .dctrl{display:none}
+.keys{font-size:12px;color:var(--muted)}
+@media (max-width:640px){.dstat{gap:8px 10px}.dinfo{min-width:0;flex:1 1 0}.dphase{font-size:13px}.dprog{order:5;flex:1 1 100%}.tally{order:4;flex:1 1 100%;font-size:12px}.dtoggle{padding:6px 10px;font-size:13px}.keys{display:none}}
+
+/* howto */
+.howto{list-style:none;padding:0;margin:14px 0 0;display:flex;flex-wrap:wrap;gap:8px 22px;font-size:14px}
+.howto li{display:flex;gap:8px;align-items:center}
+.howto .n{display:inline-block;width:22px;height:22px;border-radius:50%;background:var(--ink);color:var(--panel);font-size:12px;font-weight:700;line-height:22px;text-align:center;flex:none}
+/* drawer additions */
+.drawer canvas#wave{flex:1 1 280px;height:44px;min-width:200px;display:block}
+.drawer .transcript{margin-top:6px;font-size:15px;line-height:1.45;max-height:3em;overflow:auto;min-height:0}
+.drawer.collapsed .transcript{max-height:1.5em;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+@media (max-width:640px){.drawer canvas#wave{order:6;flex:1 1 100%;height:36px}.drawer .transcript{font-size:14px}}
+
+/* placement */
+.place{margin-bottom:14px}
+.placegrid{display:grid;grid-template-columns:1fr 1fr 1.2fr;gap:14px;margin-top:10px}
+@media (max-width:1060px){.placegrid{grid-template-columns:1fr 1fr}.pres{grid-column:1/-1}}
+@media (max-width:640px){.placegrid{grid-template-columns:1fr}}
+.pcol{border:1px solid var(--line);border-radius:12px;padding:10px;background:var(--bg);display:flex;flex-direction:column;gap:7px;min-width:0}
+.pcol h3{margin:0 0 2px;font-size:15px;font-stretch:90%;display:flex;justify-content:space-between;align-items:baseline;gap:8px}
+.pcol h3 small{font-weight:400;color:var(--muted);font-size:12px}
+.pc{display:block;width:100%;text-align:left;border:1px solid var(--line);border-left:4px solid var(--muted);border-radius:9px;background:var(--panel);color:var(--ink);padding:7px 10px;cursor:pointer;font:inherit;transition:transform .15s}
+.pc.per{border-left-color:var(--per)}.pc.s1{border-left-color:var(--s1)}.pc.s2{border-left-color:var(--s2)}.pc.out{border-left-color:var(--out)}
+.pc b{display:block;font-size:13.5px}
+.pc .mdl{display:block;font-size:12px;color:var(--muted)}
+.pc .act{display:block;font-size:12px;margin-top:3px;color:var(--s2);font-weight:600}
+.pc.locked{cursor:default;background:transparent}
+.pc.locked .act{color:var(--muted);font-weight:400}
+.pc.blocked .act{color:var(--out);font-weight:500}
+.pc.unused{opacity:.45}
+.pc.moved{animation:slidein .3s ease-out}
+.fixedh{font-size:12px;color:var(--muted);margin-top:6px}
+.pills{display:flex;flex-wrap:wrap;gap:6px}
+.pill{display:inline-flex;align-items:center;gap:6px;font-size:12.5px;padding:3px 10px;border-radius:999px;border:1px solid var(--line);background:var(--panel);cursor:help}
+.pill i{width:8px;height:8px;border-radius:2px;background:var(--muted)}
+.pill.per i{background:var(--per)}.pill.s1 i{background:var(--s1)}.pill.s2 i{background:var(--s2)}.pill.out i{background:var(--out)}
+.idle{font-size:12px;color:var(--muted);margin:6px 0 0}
+.pres{border:1.5px solid var(--ink);border-radius:12px;padding:12px 14px;background:var(--panel);min-width:0}
+.pres h3{margin:0 0 6px;font-size:15px;font-stretch:90%}
+.cmp{display:grid;grid-template-columns:118px 1fr 74px;gap:8px;align-items:center;font-size:13px;margin:5px 0}
+.cmp .rbar{height:16px}
+.cmp .rnum{text-align:right}
+.delta{font-size:14px;margin:6px 0 10px}
+.stats{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin:8px 0}
+.stat{border:1px solid var(--line);border-radius:9px;padding:7px 9px;background:var(--bg)}
+.stat small{display:block;color:var(--muted);font-size:11.5px}
+.stat b{font-size:14.5px}
+.hw{border-top:1px solid var(--line);margin-top:8px;padding-top:8px;font-size:13.5px}
+.hw div{margin:4px 0}
+.hw .k{color:var(--muted);display:inline-block;min-width:64px}
+.qnotes{font-size:12.5px;color:var(--muted);margin:8px 0 0;padding-left:18px}
+details.allsc{margin-top:10px;font-size:13px}
+details.allsc summary{cursor:pointer;font-weight:600}
+table.allt{width:100%;border-collapse:collapse;margin-top:6px;font-size:12.5px}
+table.allt th,table.allt td{text-align:left;padding:5px 4px;border-top:1px solid var(--soft);vertical-align:top}
+table.allt th{color:var(--muted);font-weight:500}
+.devtag{display:none;font-size:10px;font-weight:700;fill:var(--per);font-family:var(--sans)}
+.node.ondev .devtag{display:block}
+.node.ondev rect{stroke-dasharray:5 3}
+
+.pbar{display:flex;flex-wrap:wrap;gap:10px 22px;align-items:center;margin:10px 0 12px}
+.lanes-wrap{overflow-x:auto;padding-bottom:6px}
+.lanes{position:relative;display:grid;gap:10px 10px;min-width:760px}
+.lanelab{display:flex;flex-direction:column;justify-content:center;padding:8px 10px;border-radius:10px;font-weight:700;font-size:14px}
+.lanelab small{font-weight:400;font-size:11.5px;color:var(--muted)}
+.lanelab.dev{background:var(--per-t)}.lanelab.srv{background:var(--s2-t)}
+.cell{position:relative;min-height:98px;border-radius:10px;display:flex}
+.cell.devrow{background:color-mix(in srgb,var(--per-t) 45%,transparent)}
+.cell.srvrow{background:color-mix(in srgb,var(--s2-t) 45%,transparent)}
+.tile{position:relative;z-index:2;flex:1;text-align:left;border:1.5px solid var(--line);border-top:4px solid var(--muted);border-radius:10px;background:var(--panel);color:var(--ink);padding:8px 9px;cursor:pointer;font:inherit;display:flex;flex-direction:column;gap:2px;transition:transform .15s,box-shadow .15s}
+.tile:hover:not(.locked){transform:translateY(-2px);box-shadow:0 6px 16px rgba(10,20,40,.12)}
+.tile.per{border-top-color:var(--per)}.tile.s1{border-top-color:var(--s1)}.tile.s2{border-top-color:var(--s2)}.tile.out{border-top-color:var(--out)}
+.tile b{font-size:13px;line-height:1.2}
+.tile .mdl{font-size:11px;color:var(--muted);line-height:1.3}
+.tile .tact{margin-top:auto;font-size:11.5px;font-weight:600;color:var(--s2);padding-top:4px}
+.tile.locked{cursor:help;background:var(--panel);border-style:dashed;color:var(--muted)}
+.tile.locked b{color:var(--ink)}
+.tile.locked .tact,.tile.blocked .tact{color:var(--muted);font-weight:500}
+.tile.moved{animation:slidein .3s ease-out}
+.slot{flex:1;border:1.5px dashed transparent;border-radius:10px;background:transparent;color:var(--muted);font:inherit;font-size:12px;cursor:pointer}
+.slot:hover,.slot:focus-visible{border-color:var(--muted);color:var(--ink)}
+.slot span{opacity:0}.slot:hover span,.slot:focus-visible span{opacity:1}
+.lanepath{position:absolute;inset:0;pointer-events:none;z-index:1;overflow:visible}
+.lanepath path{fill:none;stroke:var(--ink);stroke-width:2;stroke-dasharray:6 5;opacity:.55}
+.hop{position:absolute;z-index:3;transform:translate(-50%,-50%);background:var(--out);color:#fff;font-size:11px;font-weight:700;border-radius:999px;padding:1px 7px;white-space:nowrap;pointer-events:none}
+.pnote{margin:10px 0 0;padding:9px 12px;border-radius:10px;background:var(--bg);border:1px solid var(--line);font-size:14px}
+.metrics{display:grid;grid-template-columns:repeat(4,1fr);gap:10px;margin-top:14px}
+@media (max-width:900px){.metrics{grid-template-columns:1fr 1fr}}
+.metric{border:1px solid var(--line);border-radius:12px;padding:10px 12px;background:var(--panel);display:flex;flex-direction:column;gap:3px}
+.metric small{color:var(--muted);font-size:12px}
+.metric > b{font-size:24px;font-stretch:85%;line-height:1.1}
+.metric .cmpline{font-size:12.5px;color:var(--muted)}
+.tag{align-self:flex-start;font-size:12px;font-weight:700;border-radius:999px;padding:1px 9px;margin-top:2px}
+.tag.good{background:var(--per-t);color:var(--per);border:1px solid var(--per)}
+.tag.warn{background:var(--s1-t);color:var(--ink);border:1px solid var(--s1)}
+.tag.neutral{background:var(--soft);color:var(--muted);border:1px solid var(--line)}
+.hwrow{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-top:10px}
+@media (max-width:640px){.hwrow{grid-template-columns:1fr}}
+.hwbox{border-radius:12px;padding:10px 12px;display:flex;flex-direction:column;gap:2px}
+.hwbox.dev{background:var(--per-t)}.hwbox.srv{background:var(--s2-t)}
+.hwbox small{color:var(--muted);font-size:12px}
+.hwbox b{font-size:14.5px}
+.hwbox span{font-size:12.5px;color:var(--muted)}
+.trade{margin-top:10px;font-size:13.5px}
+.trade ul{margin:4px 0 0;padding-left:18px}
+
+/* tabs + watch view */
+.lede2{margin:12px 0 0;font-size:15px}
+.tabs{display:flex;gap:6px;flex-wrap:wrap;margin:0 0 14px;padding:6px;background:var(--panel);border:1px solid var(--line);border-radius:14px;position:sticky;top:8px;z-index:6}
+.tabs [role=tab]{display:flex;align-items:center;gap:8px;border:0;background:transparent;color:var(--ink);font:inherit;font-size:14.5px;font-weight:600;padding:8px 14px;border-radius:10px;cursor:pointer}
+.tabs [role=tab] .n,.colh .n,.steps .n{display:inline-block;width:22px;height:22px;border-radius:50%;background:var(--soft);color:var(--ink);font-size:12px;font-weight:700;line-height:22px;text-align:center;flex:none}
+.tabs [role=tab][aria-selected=true]{background:var(--ink);color:var(--panel)}
+.tabs [role=tab][aria-selected=true] .n{background:var(--panel);color:var(--ink)}
+.tabpanel[hidden]{display:none}
+.tabpanel .map{grid-column:span 12}
+@media (max-width:980px){.howto2{grid-column:span 12}}
+.flow{list-style:none;padding:0;margin:8px 0 12px;display:flex;flex-direction:column;gap:10px;font-size:14.5px}
+.flow li{display:grid;grid-template-columns:12px 1fr;gap:10px;align-items:start}
+.flow i{width:12px;height:12px;border-radius:3px;margin-top:5px}
+.live h2{font-size:24px}
+.livegrid{display:grid;grid-template-columns:1fr 1fr 1.25fr;gap:14px;margin-top:10px}
+@media (max-width:1060px){.livegrid{grid-template-columns:1fr 1fr}.stagecol{grid-column:1/-1}}
+@media (max-width:700px){.livegrid{grid-template-columns:1fr}}
+.lcol{min-width:0;background:var(--bg);border:1px solid var(--line);border-radius:12px;padding:12px}
+.stagecol{background:transparent;border:0;padding:0}
+.colh{display:flex;align-items:center;gap:8px;font-size:15px;margin:0 0 10px;font-stretch:90%}
+.say{display:flex;flex-direction:column;gap:12px;min-height:180px}
+.sayrow{display:grid;grid-template-columns:30px 1fr;gap:10px;align-items:start}
+.sayrow.ignored{opacity:.7}
+.av{width:30px;height:30px;border-radius:50%;display:inline-flex;align-items:center;justify-content:center;font-weight:700;font-size:13px;color:#fff;background:var(--muted)}
+.a-You{background:var(--per)}.a-Asha{background:var(--out)}.a-Bikash{background:var(--s2)}.a-unk{background:var(--muted)}
+.sayrow .who{font-size:12px;font-weight:700;margin-bottom:2px}
+.raw{font-size:17px;line-height:1.55}
+.raw .w.unstable{color:var(--muted);font-style:italic}
+.raw .w.flag{text-decoration:underline wavy var(--out);text-underline-offset:4px}
+.raw .w.lat{background:var(--s1-t);border-radius:3px;padding:0 2px}
+.raw .w.fixed{background:var(--per-t);border-radius:3px;padding:0 2px}
+.ignored .raw{text-decoration:line-through;color:var(--muted)}
+.igtag{font-size:11px;font-weight:700;border:1px solid var(--line);border-radius:999px;padding:0 7px;color:var(--muted)}
+.saykey{font-size:12px;color:var(--muted);margin:4px 0 0}
+.saykey .w.unstable{font-style:italic}.saykey .w.flag{text-decoration:underline wavy var(--out)}.saykey .w.fixed{background:var(--per-t);padding:0 3px;border-radius:3px}
+.sayempty,.eempty{color:var(--muted);font-size:14px;margin:0;list-style:none}
+.edits{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:7px;max-height:440px;overflow:auto;min-height:180px}
+.ecard{display:grid;grid-template-columns:30px 1fr auto;gap:9px;align-items:center;padding:8px 10px;border-radius:10px;background:var(--panel);border:1px solid var(--line);font-size:13.5px}
+.ecard.fresh{animation:pop .45s ease-out}
+@keyframes pop{0%{transform:scale(.96);box-shadow:0 0 0 4px var(--s1-t)}100%{transform:none;box-shadow:none}}
+.eg{width:30px;height:30px;border-radius:9px;display:inline-flex;align-items:center;justify-content:center;font-weight:800;font-size:14px;color:#fff}
+.ecard.out .eg{background:var(--out)}.ecard.s1 .eg{background:var(--s1)}.ecard.s2 .eg{background:var(--s2)}.ecard.per .eg{background:var(--per)}.ecard.muted .eg{background:var(--muted)}
+.eb b{margin-right:4px}
+.et{font-family:var(--mono);font-size:11px;color:var(--muted);white-space:nowrap}
+.pair{margin-left:auto;display:flex;align-items:center;gap:7px;font-size:13.5px;color:var(--muted);padding:0 8px;cursor:pointer}
+#tab-how{margin-top:14px}
+.mapwrap{position:relative}
+.tabpanel .map svg#map{max-height:640px;margin:0 auto}
+.maplegend{position:absolute;left:8px;top:8px;width:min(330px,calc(100% - 16px));background:color-mix(in srgb,var(--panel) 94%,transparent);backdrop-filter:blur(4px);border:1px solid var(--line);border-radius:12px;box-shadow:0 10px 26px rgba(10,20,40,.14);z-index:3;font-size:13.5px}
+.mlh{display:flex;align-items:center;gap:8px;padding:8px 10px;cursor:grab;user-select:none;touch-action:none}
+.mlh:active{cursor:grabbing}
+.mlh b{flex:1;font-size:13.5px}
+.grip{color:var(--muted);font-size:14px}
+.mlh button{font:inherit;font-size:12px;border:1px solid var(--line);background:var(--panel);color:var(--ink);border-radius:7px;padding:2px 9px;cursor:pointer}
+.mlb{padding:0 12px 10px}
+.mlb .flow{margin:0 0 8px;gap:7px;font-size:13px}
+.mlnote{font-size:12px;color:var(--muted);margin:0}
+.maplegend.min{width:auto}
+.maplegend.min .mlb{display:none}
+@media (max-width:700px){.maplegend{position:static;width:auto;margin-top:8px;box-shadow:none}}
+/* build guide */
+.buildguide{margin-bottom:14px}
+.steps{list-style:none;margin:10px 0 0;padding:0;display:flex;flex-direction:column;gap:12px}
+.steps > li{border:1px solid var(--line);border-radius:12px;padding:12px 14px;background:var(--bg)}
+.steps .sh{display:flex;align-items:center;gap:10px;flex-wrap:wrap;font-size:16px}
+.steps .n{background:var(--ink);color:var(--panel)}
+.tagx{font-size:12px;color:var(--muted);border:1px solid var(--line);border-radius:999px;padding:1px 8px}
+.steps p{margin:8px 0 0;font-size:14.5px}
+.steps .later{font-size:13px;color:var(--muted)}
+.steps a{color:var(--s2)}
+.steps .codewrap pre{background:var(--panel)}
+
+/* live polish */
+.composer.live{border-color:var(--s2);background:var(--panel)}
+.livetag{display:inline-block;font-size:11px;font-weight:700;color:#fff;background:var(--s2);border-radius:999px;padding:1px 8px;margin-right:4px;vertical-align:1px}
+.composer del,.liveintent del{color:var(--out);text-decoration:line-through;opacity:.7;animation:fadeDel 1.4s ease-out forwards}
+@keyframes fadeDel{0%{opacity:1}100%{opacity:.35}}
+.composer ins,.liveintent ins{text-decoration:none;background:var(--per-t);border-bottom:2px solid var(--per);border-radius:3px;padding:0 2px;animation:popIns .5s ease-out}
+@keyframes popIns{0%{background:var(--s1-t)}100%{background:var(--per-t)}}
+.tent{color:var(--muted);font-style:italic}
+.chip.lp{border-color:var(--s2);background:var(--s2-t)}
+.livechips{margin:-4px 12px 10px}
+.liveintent{margin:10px 12px 0;padding:9px 11px;border:1.5px solid var(--s2);border-radius:10px;background:var(--panel);font-size:14.5px}
+.liveintent .livechips{margin:8px 0 0}
+.polished{color:var(--ink)}
+.note.ign{margin:6px 12px 8px;color:var(--muted);font-style:italic}
+.nextstep{display:flex;flex-wrap:wrap;gap:8px;align-items:center;margin:0 12px 12px;padding:8px 10px;border-radius:10px;background:var(--out-t);border:1px solid var(--out);font-size:13.5px}
+.nextstep span{flex:1 1 200px}
+.nextstep button{font:inherit;font-size:13px;border:1px solid var(--out);background:var(--out);color:#fff;border-radius:8px;padding:3px 10px;cursor:pointer}
+.nextstep .ghostb{background:transparent;color:var(--ink);border-color:var(--line)}
+
+/* developer reference */
+.hbtns{display:flex;gap:8px;flex-wrap:wrap;justify-content:flex-end}
+.devref{margin-top:14px}
+.devref[hidden]{display:none}
+#refSearch{font:inherit;font-size:14px;padding:8px 12px;border:1px solid var(--line);border-radius:10px;background:var(--bg);color:var(--ink);min-width:min(320px,100%)}
+.refgrid{display:grid;grid-template-columns:230px 1fr;gap:18px;margin-top:12px;align-items:start}
+@media (max-width:900px){.refgrid{grid-template-columns:1fr}}
+.refindex{position:sticky;top:12px;max-height:calc(100vh - var(--drawer-h,0px) - 40px);overflow:auto;border:1px solid var(--line);border-radius:12px;padding:10px;background:var(--bg);font-size:13px}
+@media (max-width:900px){.refindex{position:static;max-height:none}}
+.ri-group{margin-bottom:8px}
+.ri-h{display:flex;align-items:center;gap:6px;font-weight:700;font-size:12.5px;margin:4px 0 2px}
+.ri-h i,.rl-h i{width:9px;height:9px;border-radius:2px;display:inline-block}
+.refindex a{display:block;color:var(--ink);text-decoration:none;padding:2px 0 2px 15px;border-radius:5px}
+.refindex a:hover{color:var(--s2);text-decoration:underline}
+.rl{margin-bottom:18px}
+.rl-h{display:flex;align-items:center;gap:8px;font-size:16px;font-stretch:90%;margin:0 0 8px}
+.rc{border:1px solid var(--line);border-left:4px solid var(--muted);border-radius:12px;padding:12px 14px;background:var(--panel);margin-bottom:10px;scroll-margin-top:14px}
+.rc.per{border-left-color:var(--per)}.rc.s1{border-left-color:var(--s1)}.rc.s2{border-left-color:var(--s2)}.rc.out{border-left-color:var(--out)}
+.rc.flash{animation:flash 1.6s ease-out}
+@keyframes flash{0%{box-shadow:0 0 0 4px var(--s1-t)}100%{box-shadow:none}}
+.rc header{display:flex;flex-wrap:wrap;gap:4px 12px;align-items:baseline}
+.rc h4{margin:0;font-size:16px}
+.rc .role{font-size:13px;color:var(--muted)}
+.facts{display:grid;grid-template-columns:repeat(auto-fill,minmax(220px,1fr));gap:6px 14px;margin:10px 0 0}
+.facts div{font-size:13px}
+.facts dt{color:var(--muted);font-size:11.5px}
+.facts dd{margin:0}
+.rc .use{font-size:14px;margin:10px 0 0}
+.codewrap{position:relative;margin-top:10px}
+.codewrap pre{margin:0;background:var(--bg);border:1px solid var(--line);border-radius:10px;padding:10px 12px;overflow:auto;font-family:var(--mono);font-size:12px;line-height:1.5}
+.copy{position:absolute;top:6px;right:6px;font:inherit;font-size:12px;border:1px solid var(--line);border-radius:7px;background:var(--panel);color:var(--ink);padding:2px 9px;cursor:pointer}
+.rlinks{display:flex;flex-wrap:wrap;gap:6px 14px;margin-top:10px;font-size:13.5px}
+.rlinks a{color:var(--s2)}
+.insplink{color:var(--s2);font-weight:600}
+
+/* decisions */
+.decs{display:flex;flex-direction:column;gap:8px;max-height:360px;overflow:auto;padding-right:2px}
+.dec{border:1px solid var(--line);border-left:4px solid var(--s1);border-radius:8px;padding:7px 9px;background:var(--panel);animation:slidein .25s ease-out}
+@keyframes slidein{from{transform:translateY(-4px);opacity:0}to{transform:none;opacity:1}}
+.dec .dh{display:flex;justify-content:space-between;gap:8px;font-size:13px}
+.dec .dh b{font-weight:700}
+.badge{font-size:11px;border:1px solid var(--line);border-radius:999px;padding:0 7px;color:var(--muted);white-space:nowrap}
+.opt{display:grid;grid-template-columns:118px 1fr 40px;gap:6px;align-items:center;font-size:12px;margin-top:3px}
+.opt .bar{height:8px;background:var(--soft);border-radius:4px;overflow:hidden}
+.opt .bar i{display:block;height:100%;background:var(--muted)}
+.opt.pick .bar i{background:var(--s1)}
+.opt.pick span:first-child{font-weight:700}
+.opt .pv{font-family:var(--mono);text-align:right}
+.dec .dn{font-size:11.5px;color:var(--muted);margin-top:3px}
+pre#intent{font-family:var(--mono);font-size:11.5px;line-height:1.45;background:var(--bg);border:1px solid var(--line);border-radius:10px;padding:10px;max-height:260px;overflow:auto;margin:0}
+pre#intent mark{background:var(--s1-t);color:inherit;border-radius:2px}
+.subh{font-size:14px;font-weight:700;margin:14px 0 6px}
+
+/* bus */
+ol#bus{list-style:none;margin:0;padding:0;font-family:var(--mono);font-size:12px;max-height:230px;overflow:auto;border:1px solid var(--line);border-radius:10px;background:var(--bg)}
+ol#bus li{display:grid;grid-template-columns:78px 120px 1fr;gap:8px;padding:4px 10px;border-top:1px solid var(--soft)}
+ol#bus li:first-child{border-top:0}
+ol#bus .t{color:var(--muted)}
+ol#bus .tp.per{color:var(--per)}ol#bus .tp.s1{color:var(--s1)}ol#bus .tp.s2{color:var(--s2)}ol#bus .tp.out{color:var(--out)}
+@media (max-width:640px){ol#bus li{grid-template-columns:64px 1fr}ol#bus li .m{grid-column:1/-1}}
+
+/* inspector */
+.insp{position:fixed;right:16px;bottom:calc(var(--drawer-h,0px) + 16px);width:min(380px,calc(100vw - 32px));max-height:70vh;overflow:auto;background:var(--panel);border:1.5px solid var(--ink);border-radius:14px;padding:14px 16px;box-shadow:0 18px 40px rgba(10,20,40,.22);display:none;z-index:5;margin-bottom:env(safe-area-inset-bottom,0px)}
+.insp.open{display:block}
+.insp h3{margin:0 0 4px;font-size:18px;font-stretch:85%}
+.insp .fam{font-size:12.5px;color:var(--muted);margin-bottom:8px}
+.insp dl{display:grid;grid-template-columns:92px 1fr;gap:6px 10px;font-size:13.5px;margin:0}
+.insp dt{color:var(--muted)}
+.insp dd{margin:0}
+.insp .x{position:absolute;right:10px;top:8px;border:0;background:transparent;color:var(--ink);font-size:20px;cursor:pointer}
+footer{margin-top:22px;font-size:13px;color:var(--muted)}
+footer a{color:var(--s2)}
+@media (prefers-reduced-motion:reduce){*{animation:none!important;transition:none!important}}
+</style>
+</head>
+<body>
+<div class="wrap">
+<header class="top">
+  <div>
+    <h1>Voice in,<br>response out</h1>
+    <p class="lede">Follow one spoken request through the Open Voice Layer, from microphone to text, generated UI and spoken reply, and see where every millisecond and every model goes.</p>
+    <p class="lede2">Start with <b>Watch it</b> and press Play. The other tabs explain how, where it runs, the internals, and how to build it.</p>
+  </div>
+  <div class="hbtns"><button class="themebtn" type="button" id="goBuild">Build it</button><button class="themebtn" id="themeBtn" type="button">Switch theme</button></div>
+</header>
+
+
+
+<nav class="tabs" role="tablist" aria-label="Sections">
+  <button role="tab" type="button" data-tab="watch" aria-selected="true"><span class="n">1</span>Watch it</button>
+  <button role="tab" type="button" data-tab="how" aria-selected="false"><span class="n">2</span>How it works</button>
+  <button role="tab" type="button" data-tab="device" aria-selected="false"><span class="n">3</span>Device or server</button>
+  <button role="tab" type="button" data-tab="hood" aria-selected="false"><span class="n">4</span>Under the hood</button>
+  <button role="tab" type="button" data-tab="build" aria-selected="false"><span class="n">5</span>Build it</button>
+  <label class="pair"><input type="checkbox" id="pairChk" checked> Show 1 and 2 together</label>
+</nav>
+<div class="tabpanel" id="tab-watch" role="tabpanel"><section class="panel live" aria-label="Watch it work">
+  <div class="livehead"><div><h2 id="liveTitle">Watch it work</h2><p class="hint" id="liveHint">Press Play in the bar at the bottom. Left: exactly what was said. Middle: every fix as it happens. Right: what lands in the app.</p></div></div>
+  <div class="livegrid">
+    <div class="lcol"><h3 class="colh"><span class="n">1</span>What you say</h3><div id="say" class="say" aria-live="polite"></div></div>
+    <div class="lcol"><h3 class="colh"><span class="n">2</span>What changes</h3><ol id="edits" class="edits" aria-live="polite"></ol></div>
+    <div class="lcol stagecol">
+    <h3 class="colh"><span class="n">3</span>What appears</h3>
+    <p class="hint" id="stageHint"></p>
+    <div id="stage"></div>
+  </div>
+  </div>
+</section></div>
+<div class="tabpanel" id="tab-how" role="tabpanel" hidden><div class="grid"><section class="panel map">
+    <h2>System map</h2>
+    <p class="hint">Blocks light up while they work; dots are events on the bus. Select any block for its model, budget and pattern.</p>
+    <div class="mapwrap"><svg id="map" viewBox="0 0 780 432" role="img" aria-label="Pipeline diagram"></svg><div class="maplegend min" id="mapLegend" role="region" aria-label="How to read the map">
+      <div class="mlh" id="mlHandle" title="Drag to move"><span class="grip" aria-hidden="true">⠿</span><b>How to read the map</b><button type="button" id="mlToggle" aria-expanded="false">Expand</button></div>
+      <div class="mlb"><ol class="flow">
+      <li><i style="background:var(--per)"></i><span><b>Hear.</b> The client captures audio; speech becomes text in small chunks and each voice gets a label.</span></li>
+      <li><i style="background:var(--s2)"></i><span><b>Polish live.</b> Stable words are cleaned while you are still talking.</span></li>
+      <li><i style="background:var(--s1)"></i><span><b>Decide fast.</b> One small model answers typed questions in tens of milliseconds: dictation or command, which name, which script, is it safe.</span></li>
+      <li><i style="background:var(--s2)"></i><span><b>Write or think.</b> Dictation goes to the cleanup model; commands go to the reasoning agent and its tools.</span></li>
+      <li><i style="background:var(--out)"></i><span><b>Show and say.</b> Text is pasted, a card is assembled, a voice replies.</span></li>
+    </ol><p class="mlnote">Blocks marked "on device" run locally in the current Device or server layout. Select any block for details.</p></div>
+    </div></div>
+    <div class="legend">
+      <span><i style="background:var(--per)"></i>Perception</span>
+      <span><i style="background:var(--s1)"></i>System 1 decisions</span>
+      <span><i style="background:var(--s2)"></i>Generative models and tools</span>
+      <span><i style="background:var(--out)"></i>Output to the user</span>
+    </div>
+  </section><section class="panel timeline">
+    <div class="tlhead">
+      <div><h2>Timeline</h2>
+      <p class="hint">Each row is one part of the system; a bar shows when that part is working. The grey left side squeezes the seconds you spend talking. The pink right side starts when you let go of the key and shows every millisecond to scale. Select any bar to see what it does.</p></div>
+      <div class="tlkey" aria-label="Bar states"><span><i class="k done"></i>Finished</span><span><i class="k run"></i>Working now</span><span><i class="k next"></i>Coming up</span></div>
+    </div>
+    <div class="narr" id="narr" aria-live="polite"></div>
+    <div class="tlscroll"><div class="gantt" id="gantt"></div></div>
+    <ol class="miles" id="miles" aria-label="Milestones"></ol>
+    <div class="selbox" id="selbox">Select a bar to see what that step does, how long it takes and which block on the map runs it.</div>
+    <div class="race" id="race"></div>
+  </section></div></div>
+<div class="tabpanel" id="tab-device" role="tabpanel" hidden><section class="panel place" id="placePanel" aria-label="Device or server">
+    <div class="tlhead"><div><h2>Device or server</h2>
+      <p class="hint">Speech travels left to right. Parts in the top lane run on your device; parts in the bottom lane run on the server. Click a part to move it. Each time the path crosses between lanes, it pays one network trip.</p></div></div>
+    <div class="pbar">
+      <div class="group"><span class="lab">Your device</span><div class="seg" id="clsSeg" role="group" aria-label="Device type"><button type="button" data-v="laptop" aria-pressed="true">Laptop</button><button type="button" data-v="phone" aria-pressed="false">Phone</button></div></div>
+      <div class="group"><span class="lab">Quick layout</span><button class="btn ghost" id="allSrvBtn" type="button">Everything on the server</button><button class="btn ghost" id="allDevBtn" type="button">Move all that fits to the device</button></div>
+      <div class="group"><span class="lab">Network</span><select id="netSel" aria-label="Network one-way latency"><option value="20">Nearby server, 20 ms each way</option><option value="40" selected>Typical, 40 ms each way</option><option value="100">Far or mobile data, 100 ms each way</option></select></div>
+    </div>
+    <div class="lanes-wrap"><div class="lanes" id="lanes"></div></div>
+    <p class="pnote" id="pnote"></p>
+    <div id="placeRes"></div>
+  </section></div>
+<div class="tabpanel" id="tab-hood" role="tabpanel" hidden><div class="grid"><section class="panel decide">
+    <h2>System 1 decisions</h2>
+    <p class="hint">Typed questions answered in one forward pass, each with calibrated probabilities.</p>
+    <div class="decs" id="decs"></div>
+    <div class="subh">Typed Intent Object</div>
+    <pre id="intent">{}</pre>
+  </section><section class="panel bus">
+    <h2>Event bus</h2>
+    <p class="hint">Every actor talks through typed events. Newest first.</p>
+    <ol id="bus"></ol>
+  </section></div></div>
+<div class="tabpanel" id="tab-build" role="tabpanel" hidden><section class="panel buildguide" id="buildguide" aria-label="Build it">
+  <h2>Build it in seven steps</h2>
+  <p class="hint">A working path from nothing to the full system. Steps 1 to 4 give you live, speaker-aware dictation with polish on one GPU box; 5 to 7 add the desktop client, commands with voice and measurement. Commands follow each project's README as of 5 October 2026; flags and message fields can change between versions, so check the README of what you install.</p>
+  <ol class="steps">
+    <li><div class="sh"><span class="n">0</span><b>What you need</b></div>
+      <p>A Linux machine with one NVIDIA GPU of 24–32 GB (RTX 4090, RTX 5090 or L4) for steps 1 to 4, and Python 3.11+. Step 6's agent needs its own GPU: an L40S 48 GB at FP8 or an 80 GB card. An Apple Silicon Mac with 16 GB is enough to prototype the on-device path. Nemotron ASR and diarization need NVIDIA on Linux; pyannote and Parakeet are the Mac fallbacks.</p></li>
+    <li><div class="sh"><span class="n">1</span><b>Live transcript with speaker labels</b><span class="tagx">one install, one command</span></div>
+      <p>Start from WhisperLiveKit: it already streams with the LocalAgreement or SimulStreaming policy and labels speakers with Sortformer. Its JSON messages separate committed text (with a speaker on each line) from the tentative buffer, which is exactly what the live preview needs.</p>
+      <div class="codewrap"><pre><code>pip install whisperlivekit
+wlk --host 0.0.0.0 --port 8000 --model medium --diarization --language en
+# open http://localhost:8000 for the built-in live page
+# your client streams audio to ws://localhost:8000/asr and receives JSON with
+#   "lines": committed text, each line with a "speaker"
+#   "buffer_transcription": tentative text (show it grey)
+# field names: check them against the README of the version you installed</code></pre><button type="button" class="copy">Copy</button></div>
+      <p class="later">Later: swap in Nemotron 3.5 ASR (streaming, 40 locales) and Nemotron 3 Diarization for production, or Qwen3-ASR through WhisperLiveKit's qwen3 extras. See <a href="#ref-nemotron-asr" class="jl">Nemotron ASR</a> and <a href="#ref-nemotron-diar" class="jl">Nemotron 3 Diarization</a>.</p></li>
+    <li><div class="sh"><span class="n">2</span><b>Fast decisions (System 1)</b><span class="tagx">one install, one command</span></div>
+      <p>Run the open decision model as a local HTTP service. It answers yes/no (noul), choice and score questions with calibrated probabilities in one pass, in the same request format as Jev and Clef.</p>
+      <div class="codewrap"><pre><code>pip install strands-decider
+strands-decider serve StrandsAgents/strands-decider-2B-hobson-v19 --port 8001
+
+curl -s localhost:8001/v1/systemone -H 'content-type: application/json' -d '{
+  "state": "so um can we move the standup to ten no wait ten thirty",
+  "questions": {"is_command": {"type": "noul",
+    "instructions": "Is this an instruction to perform an action rather than text to type?"}}}'</code></pre><button type="button" class="copy">Copy</button></div>
+      <p class="later">Later: Clef-Flash 9B on the server (38.8 ms median) through its bundled <code>systemone()</code> helper, GLiNER2.5-multi-Decide on phones. See <a href="#ref-clef-flash" class="jl">Clef-Flash</a>.</p></li>
+    <li><div class="sh"><span class="n">3</span><b>Cleanup model</b><span class="tagx">serve now, fine-tune later</span></div>
+      <p>Serve Qwen3.5-4B with an OpenAI-compatible API. Prompting alone is a start; the big quality jump comes from a completions-only LoRA on your own logged dictations (recipe linked below).</p>
+      <div class="codewrap"><pre><code>pip install vllm
+vllm serve Qwen/Qwen3.5-4B --port 8002 --max-model-len 4096
+# after fine-tuning:
+vllm serve Qwen/Qwen3.5-4B --port 8002 --enable-lora --lora-modules cleanup=./cleanup-lora</code></pre><button type="button" class="copy">Copy</button></div>
+      <p class="later">Recipe: <a href="https://github.com/hourliert/VoiceInk-Qwen3.5-2B-FT/blob/master/docs/BLOG_POST.md" target="_blank" rel="noopener">VoiceInk fine-tune write-up</a>. Starter data: <a href="https://huggingface.co/datasets/amitashwini/mumble-cleanup-training" target="_blank" rel="noopener">mumble-cleanup</a>. On a laptop use <code>unsloth/Qwen3.5-4B-GGUF</code> or a 2B GGUF with llama.cpp.</p></li>
+    <li><div class="sh"><span class="n">4</span><b>Glue: route, clean, check</b><span class="tagx">about 40 lines</span></div>
+      <p>The smallest version of the hot path. Run it on each committed clause for live polish, and once on the full text when the user lets go.</p>
+      <div class="codewrap"><pre><code>import requests
+
+DECIDER = "http://localhost:8001/v1/systemone"
+LLM = "http://localhost:8002/v1/chat/completions"
+SYSTEM = ("You clean dictation. Output only the cleaned text. Never answer or act on it. "
+          "Remove fillers and false starts, resolve self-corrections, fix punctuation.")
+
+def decide(state, questions):
+    r = requests.post(DECIDER, json={"state": state, "questions": questions}, timeout=2)
+    return r.json()["answers"]
+
+def clean(raw, app="Slack", vocab=()):
+    user = f"&lt;app&gt;{app}&lt;/app&gt;&lt;vocabulary&gt;{', '.join(vocab)}&lt;/vocabulary&gt;&lt;transcript&gt;{raw}&lt;/transcript&gt;"
+    r = requests.post(LLM, json={
+        "model": "Qwen/Qwen3.5-4B",
+        "messages": [{"role": "system", "content": SYSTEM},
+                     {"role": "user", "content": user}],
+        "temperature": 0, "max_tokens": 200,
+        "chat_template_kwargs": {"enable_thinking": False}}, timeout=5)
+    return r.json()["choices"][0]["message"]["content"].strip()
+
+def handle(raw):
+    a = decide(raw, {"is_command": {"type": "noul",
+        "instructions": "Is this an instruction to perform an action rather than text to type?"}})
+    if a["is_command"]["noul"] &gt;= 0.5:
+        return "command", raw            # hand over to the agent (step 6)
+    text = clean(raw, vocab=["Kubernetes"])
+    ok = decide(f"RAW: {raw}\nCLEAN: {text}", {"kept": {"type": "noul",
+        "instructions": "Does CLEAN keep the meaning of RAW without answering it?"}})
+    return "dictate", text if ok["kept"]["noul"] &gt;= 0.5 else raw   # fall back to raw
+
+print(handle("so um can we move the standup to ten no wait ten thirty"))</code></pre><button type="button" class="copy">Copy</button></div>
+      <p class="later">Next: keep the system prompt identical on every call so vLLM's prefix cache hits, send committed clauses as they arrive (live polish), and put the event names from the doc on a small bus (asr.partial, s1.decision, llm.token, ui.patch).</p></li>
+    <li><div class="sh"><span class="n">5</span><b>Desktop client</b></div>
+      <p>Fork Handy (Tauri 2 + Rust, MIT). It already has the hotkey, microphone, Silero VAD, local Parakeet or Whisper and clipboard paste. Add: streaming to step 1, the live preview pill, a call to step 4 on release, and a snapshot of the field a few seconds after paste so edits become training data.</p>
+      <div class="codewrap"><pre><code>git clone https://github.com/cjpais/Handy
+cd Handy   # AGENTS.md describes the build</code></pre><button type="button" class="copy">Copy</button></div></li>
+    <li><div class="sh"><span class="n">6</span><b>Commands, generated UI and voice</b></div>
+      <p>Commands go to Qwen3.8-27B with MCP tools; the decision model picks the A2UI template so the card renders before the agent finishes; Kokoro speaks a holding line and a one-sentence summary.</p>
+      <div class="codewrap"><pre><code>vllm serve Qwen/Qwen3.8-27B-FP8 --port 8003      # needs ~27 GB GPU memory
+git clone https://github.com/a2ui-project/a2ui.git    # renderers and samples
+pip install "kokoro&gt;=0.9.4" soundfile                # plus espeak-ng
+python -c "from kokoro import KPipeline; KPipeline(lang_code='a')"</code></pre><button type="button" class="copy">Copy</button></div></li>
+    <li><div class="sh"><span class="n">7</span><b>Measure before you tune</b></div>
+      <p>Track three numbers from day one: release-to-text time at p99 (target 700 ms), the share of dictations users don't edit, and error rate per language (OIWER for Hindi and other Indic scripts). Compare new models on the public leaderboards before swapping.</p>
+      <div class="codewrap"><pre><code>pip install voi-oiwer   # fair scoring for Indic transcripts</code></pre><button type="button" class="copy">Copy</button></div>
+      <p class="later"><a href="https://huggingface.co/spaces/hf-audio/open_asr_leaderboard" target="_blank" rel="noopener">Open ASR Leaderboard</a> · <a href="https://huggingface.co/spaces/hf-audio/open_tts_leaderboard" target="_blank" rel="noopener">Open TTS Leaderboard</a> · <a href="https://huggingface.co/blog/open-asr-leaderboard-global-south" target="_blank" rel="noopener">Monsoon and OIWER</a></p></li>
+  </ol>
+</section><section class="devref panel" id="devref" aria-label="Developer reference">
+  <div class="tlhead"><div><h2>Developer reference</h2>
+    <p class="hint">Every model, tool and dataset in this design, with size, license, languages, measured numbers, a quick-start snippet and source links. Links and specs checked on 5 October 2026; model cards change, so recheck licenses before shipping.</p></div>
+    <input type="search" id="refSearch" placeholder="Filter: e.g. Nepali, Apache, phone, diarization" aria-label="Filter the reference"></div>
+  <div class="refgrid">
+    <nav class="refindex" id="refIndex" aria-label="Reference index"></nav>
+    <div class="refbody" id="refBody"></div>
+  </div>
+</section></div>
+
+
+
+<footer>Simulated timings are design targets from the architecture doc, not measurements. Models: Nemotron 3.5 streaming and Granite Speech 4.1 / Qwen3-ASR / IndicConformer for speech, Clef-Flash 9B or Strands Decider 2B for System 1, Qwen3.5-4B cleanup, Qwen3.8-27B agent, Kokoro, OmniVoice and Indic Parler-TTS for voice.</footer>
+</div>
+
+<div class="drawer" id="drawer" role="region" aria-label="Playback controls">
+ <div class="dwrap">
+  <div class="dstat">
+    <button class="btn" id="playBtn" type="button">Play</button>
+    <div class="dinfo"><span class="dphase" id="phase">Press Play to start speaking</span><span class="dclock" id="clock">t = 0 ms</span></div>
+    <canvas id="wave" aria-hidden="true"></canvas>
+    <div class="tally" id="tally"></div>
+    <button class="btn ghost dtoggle" id="dToggle" type="button" aria-expanded="true" aria-controls="dCtrl">Hide controls</button>
+  </div>
+  <div class="transcript" id="transcript" aria-live="polite"></div>
+  <div class="dctrl" id="dCtrl">
+  <div class="group"><span class="lab">Scenario</span>
+    <div class="seg" id="scenSeg" role="group" aria-label="Scenario">
+      <button type="button" data-v="dictate" aria-pressed="true">Dictate in chat</button>
+      <button type="button" data-v="codeswitch" aria-pressed="false">Nepali–English</button>
+      <button type="button" data-v="command" aria-pressed="false">Command to UI + voice</button>
+      <button type="button" data-v="listen" aria-pressed="false">Meeting notes</button>
+    </div>
+  </div>
+  <div class="group"><span class="lab">Compare</span>
+    <div class="seg" id="modeSeg" role="group" aria-label="Pipeline">
+      <button type="button" data-v="spec" aria-pressed="true">New design (v3)</button>
+      <button type="button" data-v="seq" aria-pressed="false">Old pipeline (v1)</button>
+    </div>
+  </div>
+  <div class="group" hidden><span class="lab">Where it runs</span>
+    <div class="seg" id="placeSeg" role="group" aria-label="Where it runs">
+      <button type="button" data-v="server" aria-pressed="true">Server only</button>
+      <button type="button" data-v="laptop" aria-pressed="false">Laptop</button>
+      <button type="button" data-v="phone" aria-pressed="false">Phone</button>
+    </div>
+  </div>
+  <div class="group"><span class="lab">Speed after release</span>
+    <select id="slow" aria-label="Playback speed after key release">
+      <option value="0.08">Very slow</option>
+      <option value="0.15" selected>Slow motion</option>
+      <option value="0.4">Faster</option>
+      <option value="1">Real time</option>
+    </select>
+  </div>
+  <div class="group">
+        <button class="btn ghost" id="stepBtn" type="button">Step to next event</button>
+    <button class="btn ghost" id="resetBtn" type="button">Reset</button>
+    <label class="check"><input type="checkbox" id="speakChk" checked> Speak replies aloud</label>
+  </div>
+
+    <span class="keys">Keys: Space plays or pauses, → steps, R resets</span>
+  </div>
+ </div>
+</div>
+<aside class="insp" id="insp" role="dialog" aria-modal="false" aria-labelledby="inspTitle">
+  <button class="x" id="inspX" type="button" aria-label="Close details">×</button>
+  <h3 id="inspTitle"></h3>
+  <div class="fam" id="inspFam"></div>
+  <dl id="inspBody"></dl>
+</aside>
+
+<script>
+(function(){
+"use strict";
+const $=s=>document.querySelector(s);
+const NS="http://www.w3.org/2000/svg";
+
+/* ---------- theme ---------- */
+(function(){
+  let saved=null; try{saved=localStorage.getItem("ovl-theme")}catch(e){}
+  if(saved) document.documentElement.setAttribute("data-theme",saved);
+  $("#themeBtn").addEventListener("click",()=>{
+    const cur=document.documentElement.getAttribute("data-theme")||(matchMedia("(prefers-color-scheme: dark)").matches?"dark":"light");
+    const nxt=cur==="dark"?"light":"dark";
+    document.documentElement.setAttribute("data-theme",nxt);
+    try{localStorage.setItem("ovl-theme",nxt)}catch(e){}
+    drawWave();
+  });
+})();
+
+/* ---------- map ---------- */
+const NODES={
+  client:{x:64,y:200,nm:"Client",sub:"capture, VAD, turn",fam:"per"},
+  asr:{x:190,y:200,nm:"ASR",sub:"stream + final pass",fam:"per"},
+  s1:{x:322,y:200,nm:"System 1",sub:"typed decisions",fam:"s1"},
+  polish:{x:322,y:92,nm:"Live polish",sub:"as you speak",fam:"s2"},
+  cleanup:{x:462,y:92,nm:"Cleanup LLM",sub:"Qwen3.5-4B + LoRA",fam:"s2"},
+  verify:{x:594,y:92,nm:"Verify, script",sub:"S1 checks, IndicXlit",fam:"s1"},
+  app:{x:716,y:92,nm:"Insert text",sub:"any app",fam:"out"},
+  agent:{x:462,y:300,nm:"System 2",sub:"Qwen3.8-27B agent",fam:"s2"},
+  tools:{x:462,y:390,nm:"MCP tools",sub:"calendar, mail",fam:"s2"},
+  genui:{x:676,y:262,nm:"Generated UI",sub:"A2UI catalog",fam:"out"},
+  tts:{x:676,y:352,nm:"Voice reply",sub:"Kokoro, OmniVoice",fam:"out"},
+  diar:{x:190,y:300,nm:"Diarization",sub:"who is speaking",fam:"per"}
+};
+const W=108,H=46;
+const EDGES={
+  e_audio:{a:"client",b:"asr"},
+  e_asr_s1:{a:"asr",b:"s1"},
+  e_prefill:{a:"asr",b:"polish",lab:"stable words",custom:"prefill"},
+  e_polish_clean:{a:"polish",b:"cleanup"},
+  e_route_d:{a:"s1",b:"cleanup",lab:"dictate"},
+  e_clean_verify:{a:"cleanup",b:"verify"},
+  e_verify_app:{a:"verify",b:"app"},
+  e_route_c:{a:"s1",b:"agent",lab:"command"},
+  e_tools:{a:"agent",b:"tools",vert:true},
+  e_prefetch:{a:"s1",b:"tools",lab:"prefetch",dash:true,custom:"prefetch"},
+  e_ui:{a:"agent",b:"genui"},
+  e_tts:{a:"agent",b:"tts"},
+  e_template:{a:"s1",b:"genui",lab:"template",dash:true,custom:"template"},
+  e_diar:{a:"asr",b:"diar",vert:true},
+  e_diar_s1:{a:"diar",b:"s1"}
+};
+function edgePath(e){
+  const A=NODES[e.a],B=NODES[e.b];
+  if(e.custom==="prefill"){const x1=A.x,y1=A.y-H/2,x2=B.x-W/2,y2=B.y;return `M${x1} ${y1} C ${x1} ${y2-6}, ${x2-80} ${y2}, ${x2} ${y2}`;}
+  if(e.custom==="prefetch"){const x1=A.x,y1=A.y+H/2,x2=B.x-W/2,y2=B.y;return `M${x1} ${y1} C ${x1} ${y2}, ${x2-60} ${y2}, ${x2} ${y2}`;}
+  if(e.custom==="template"){const x1=A.x+W/2,y1=A.y-8,x2=B.x-W/2,y2=B.y-12;return `M${x1} ${y1} C ${x1+120} ${y1-40}, ${x2-120} ${y2-40}, ${x2} ${y2}`;}
+  if(e.vert){return `M${A.x} ${A.y+H/2} L${B.x} ${B.y-H/2}`;}
+  const x1=A.x+W/2,y1=A.y,x2=B.x-W/2,y2=B.y,mx=(x1+x2)/2;
+  return `M${x1} ${y1} C ${mx} ${y1}, ${mx} ${y2}, ${x2} ${y2}`;
+}
+const map=$("#map"),edgeEls={},nodeEls={};
+const gEdges=document.createElementNS(NS,"g"),gPk=document.createElementNS(NS,"g"),gNodes=document.createElementNS(NS,"g");
+map.append(gEdges,gNodes,gPk);
+for(const [id,e] of Object.entries(EDGES)){
+  const p=document.createElementNS(NS,"path");
+  p.setAttribute("d",edgePath(e));p.setAttribute("class","edge"+(e.dash?" dash":""));
+  gEdges.appendChild(p);edgeEls[id]=p;
+  if(e.lab){
+    const L=p.getTotalLength(),pt=p.getPointAtLength(L*(e.custom==="template"?0.5:0.5));
+    const t=document.createElementNS(NS,"text");
+    t.setAttribute("x",pt.x);t.setAttribute("y",pt.y-6);t.setAttribute("text-anchor","middle");
+    t.setAttribute("class","elabel");t.textContent=e.lab;gEdges.appendChild(t);
+  }
+}
+for(const [id,n] of Object.entries(NODES)){
+  const g=document.createElementNS(NS,"g");
+  g.setAttribute("class","node "+n.fam);g.setAttribute("tabindex","0");g.setAttribute("role","button");
+  g.setAttribute("aria-label",n.nm+" details");
+  const r=document.createElementNS(NS,"rect");
+  r.setAttribute("x",n.x-W/2);r.setAttribute("y",n.y-H/2);r.setAttribute("width",W);r.setAttribute("height",H);r.setAttribute("rx",9);
+  const t1=document.createElementNS(NS,"text");t1.setAttribute("x",n.x);t1.setAttribute("y",n.y-3);t1.setAttribute("text-anchor","middle");t1.setAttribute("class","nm");t1.textContent=n.nm;
+  const t2=document.createElementNS(NS,"text");t2.setAttribute("x",n.x);t2.setAttribute("y",n.y+12);t2.setAttribute("text-anchor","middle");t2.setAttribute("class","sub");t2.textContent=n.sub;
+  const d=document.createElementNS(NS,"circle");d.setAttribute("cx",n.x+W/2-9);d.setAttribute("cy",n.y-H/2+9);d.setAttribute("r",3.5);d.setAttribute("class","dot");
+  const dt=document.createElementNS(NS,"text");dt.setAttribute("x",n.x);dt.setAttribute("y",n.y-H/2-5);dt.setAttribute("text-anchor","middle");dt.setAttribute("class","devtag");dt.textContent="on device";
+  g.append(r,t1,t2,d,dt);gNodes.appendChild(g);nodeEls[id]=g;
+  g.addEventListener("click",()=>openInspector(id));
+  g.addEventListener("keydown",ev=>{if(ev.key==="Enter"||ev.key===" "){ev.preventDefault();openInspector(id)}});
+}
+
+/* ---------- inspector ---------- */
+const INFO={
+  client:{fam:"Perception",rows:[["Shell","Fork of Handy: Tauri 2 + Rust, MIT"],["Listens with","Silero VAD; Smart Turn v3.2 for hands-free turns (BSD-2, 23 languages, ~65 ms)"],["Captures","Focused app, text around the cursor, optional screenshot and accessibility snapshot"],["Pattern","Event source: emits 80 ms audio.frame events while the hotkey is held"]]},
+  asr:{fam:"Perception",rows:[["Streaming","Nemotron 3.5 ASR Streaming 0.6B, or IndicConformer for Indic languages"],["Final pass","Granite Speech 4.1 2B (English, European) or Qwen3-ASR-1.7B (Indian English, Hindi, broad)"],["Budget","≤ 150 ms after release, because only the last chunk is new work"],["Innovation","Lattice picking: low-confidence spans are sent with alternatives instead of one guess"]]},
+  s1:{fam:"System 1 decisions",rows:[["Server","Clef-Flash 9B, Apache 2.0, Jev-compatible request format"],["Device","Strands Decider 2B, Apache 2.0, 115 ms median on an RTX 3090"],["Asks","Choice, Noul (yes/no) and Score questions in one fan-out call"],["Innovations","Decide while speaking; lattice picking; calibrated autonomy; privacy pinning"]]},
+  polish:{fam:"Generative model",rows:[["What it does","Shows polished text while you are still talking: fillers struck, self-corrections resolved, times and names formatted, speakers labelled"],["How","LocalAgreement-2 commits words once two partials agree; fast rules handle fillers and numbers; a small model rewrites each committed clause; System 1 flags corrections and entities"],["Models","Rules + Qwen3.5-0.8B/2B on device, or the server cleanup model"],["Next step","Detected times, names and actions become chips the user can accept before letting go"],["Pattern","Committed text only: never rewrite what the user has already read twice"]]},
+  cleanup:{fam:"Generative model",rows:[["Model","Qwen3.5-4B + LoRA on vLLM (2B on device)"],["Speed tricks","Fixed prompt prefix for prefix caching; KV prefilled from stable partials while you speak; decode starts before routing finishes"],["Budget","≤ 200 ms for ~100 tokens"],["Pattern","Speculative actor: cancelled if System 1 routes to the agent"]]},
+  verify:{fam:"System 1 decisions",rows:[["Checks","Noul: meaning preserved? Noul: answered instead of cleaned?"],["Script","IndicXlit (~11M, MIT): native, romanized, mixed, or the reader's language"],["On failure","Paste the raw transcript; escalate device drafts to the server model"],["Pattern","Draft, verify, escalate"]]},
+  app:{fam:"Output",rows:[["How","Clipboard + simulated paste, then restore the clipboard"],["Learns","Snapshots the field a few seconds later; edits become correction memory"],["Target","≤ 700 ms p99 from release, network included"]]},
+  agent:{fam:"Generative model",rows:[["Model","Qwen3.8-27B, Apache 2.0, 262K context, on vLLM"],["Job","Plans multi-step actions and streams only slot values into the UI template"],["Runs","In the background while the voice front says a holding line"],["Pattern","Slow path behind a fast front, as in Gander and GPT-Live"]]},
+  tools:{fam:"Tools",rows:[["Protocol","MCP servers: calendar, mail, files, internal APIs"],["Prefetch","Read-only calls start during speech once System 1 pre-routes to a command"],["Safety","Writes wait for the reversibility score; irreversible ones need a tap"],["Pattern","Speculative actors with cancel tokens"]]},
+  genui:{fam:"Output",rows:[["Format","A2UI components from the client's trusted catalog, streamed over AG-UI"],["Innovation","Assembled, not generated: System 1 picks the template, a skeleton renders at once, the agent fills slots"],["Safe by design","The agent can only send data for components the client already trusts"]]},
+  diar:{fam:"Perception",rows:[["Model","Nemotron 3 Diarization, 100M, up to 8 speakers, OpenMDW 1.1; fallback pyannote community-1"],["Presets","0.32 s streaming for Dictate, Command, Converse; 1.04 s for live meeting notes; offline final pass when you stop"],["Merge","Each ASR word gets the speaker with the highest activity probability over its time span"],["Innovations","Own-voice gate (other voices never reach the LLM or the agent); owner-aware meeting actions; speaker-scoped permissions"]]},
+  tts:{fam:"Output",rows:[["Models","Kokoro-82M (fast), OmniVoice 0.6B (600+ languages), Indic Parler-TTS (21 Indic languages)"],["Flow","Holding line within ~200 ms, then a one-sentence summary while the UI shows details"],["Interrupts","Barge-in sends a cancel event to every downstream actor"]]}
+};
+function openInspector(id){
+  const n=NODES[id],i=INFO[id];
+  $("#inspTitle").textContent=n.nm;$("#inspFam").textContent=i.fam;
+  $("#inspBody").innerHTML=i.rows.map(r=>`<dt>${r[0]}</dt><dd>${r[1]}</dd>`).join("");
+  const rid=NODE_REF[id];$("#inspBody").innerHTML+=rid?`<dt></dt><dd><a href="#ref-${rid}" class="insplink" data-id="${rid}">Developer reference for this part</a></dd>`:"";
+  const il=$("#inspBody").querySelector(".insplink");if(il)il.addEventListener("click",e=>{e.preventDefault();$("#insp").classList.remove("open");jumpRef(il.dataset.id)});
+  $("#insp").classList.add("open");$("#inspX").focus();
+}
+$("#inspX").addEventListener("click",()=>$("#insp").classList.remove("open"));
+document.addEventListener("keydown",e=>{if(e.key==="Escape")$("#insp").classList.remove("open")});
+
+/* ---------- scenarios ---------- */
+const SCEN={
+  dictate:{R:3600,words:"so um can we move the standup to ten no wait ten thirty and loop in the cuban eighties folks".split(" "),lattice:[17,18],
+    hint:"Dictate mode: hold the hotkey in a chat app, speak, release.",
+    clean:"Can we move the standup to 10:30 and loop in the Kubernetes folks?",
+    v1:"Can we move the standup to 10:30 and loop in the Cuban eighties folks?"},
+  codeswitch:{R:3800,words:"umm boss lai bhannu parchha ki report no wait report bholi samma ready hunchha".split(" "),lattice:null,
+    hint:"Dictate mode with Nepali–English code-switching in a chat with a friend.",
+    scripts:{roman:"Boss lai bhannu parchha ki report bholi samma ready hunchha.",mixed:"Boss लाई भन्नुपर्छ कि report भोलिसम्म ready हुन्छ।",deva:"बसलाई भन्नुपर्छ कि रिपोर्ट भोलिसम्म रेडी हुन्छ।",en:"I need to tell the boss the report will be ready by tomorrow."},
+    v1:"Boss lie bhannu parcha key report bholi samma ready huncha."},
+  command:{R:4200,words:"move my three pm with asha to friday same time and tell her i'm running ten minutes late today".split(" "),lattice:[5],
+    hint:"Command mode: a spoken instruction becomes actions, a generated card and a spoken reply.",
+    hold:"On it.",
+    summary:"Moved your design review with Asha to Friday at 3. Your late note to her is ready; tap send.",
+    msg:"Hi Asha, I'm running about 10 minutes late today. Sorry!"}
+};
+
+SCEN.dictate.live=[
+ {at:4,html:'<del>so um</del> Can we move',chip:null,edit:['Removed','Filler words “so um”']},
+ {at:8,html:'<del>so um</del> Can we move the standup to <ins>10</ins>',chip:"Time: 10:00 tomorrow",edit:['Formatted','“ten” written as 10']},
+ {at:11,html:'Can we move the standup to <del>10, no wait,</del>',chip:"Self-correction detected (0.91)",edit:['Corrected','You said “no wait”, so “10” is dropped']},
+ {at:12,html:'Can we move the standup to <ins>10:30</ins>',chip:"Time: 10:30 tomorrow",edit:['Formatted','“ten thirty” written as 10:30']},
+ {at:15,html:'Can we move the standup to 10:30 and loop in',chip:null},
+ {at:19,html:'Can we move the standup to 10:30 and loop in the <ins>Kubernetes</ins> folks',chip:"Dictionary: Kubernetes",lat:true},
+];
+SCEN.dictate.next="Next step offered: update tomorrow's standup invite to 10:30?";
+SCEN.codeswitch.live=[
+ {at:4,html:'<del>umm</del> Boss lai bhannu parchha',chip:"Language: Nepali + English",edit:['Removed','Filler “umm”']},
+ {at:6,html:'Boss lai bhannu parchha ki report',chip:"Script: romanized, like this thread",edit:['Styled','Kept romanized Nepali, like this chat']},
+ {at:9,html:'Boss lai bhannu parchha ki <del>report, no wait,</del> report',chip:"Self-correction detected",edit:['Corrected','“report, no wait, report” becomes one “report”']},
+ {at:13,html:'Boss lai bhannu parchha ki report bholi samma ready hunchha',chip:"Time: bholi = tomorrow",edit:['Understood','“bholi” means tomorrow']},
+];
+SCEN.codeswitch.next="Next step offered: remind you tomorrow morning about the report?";
+SCEN.command.live=[
+ {at:3,html:'<b>Move</b> my <ins>3 PM</ins>',chip:"Event: Design review, 15:00"},
+ {at:5,html:'<b>Move</b> my 3 PM with <ins>Asha</ins>',chip:"Contact: Asha",edit:['Recognised','“asha” matched to Asha in your contacts']},
+ {at:9,html:'<b>Move</b> my 3 PM with Asha to <ins>Friday, same time</ins>',chip:"Action: calendar.move, undoable",edit:['Understood','Move it to Friday, same time']},
+ {at:18,html:'<b>Move</b> my 3 PM with Asha to Friday, same time, and <b>tell</b> her I\'m running <ins>10 minutes</ins> late today',chip:"Action: message.send, needs a tap",edit:['Understood','Also: tell Asha you are 10 minutes late']},
+];
+SCEN.listen={R:9000,hint:"Listen mode: a short stand-up between you, Asha and Bikash. Diarization labels each voice; System 1 extracts action items with owners as you go.",
+  segs:[{spk:"Asha",text:"the vendor demo slipped to next tuesday",pol:"The vendor demo slipped to next Tuesday."},{spk:"You",text:"okay then i'll update the rollout plan by friday",pol:"Okay, then I'll update the rollout plan by Friday."},{spk:"Bikash",text:"i can send the revised budget tomorrow",pol:"I can send the revised budget tomorrow."},{spk:"Asha",text:"and someone should email the vendor to confirm",pol:"And someone should email the vendor to confirm."},{spk:"You",text:"asha can you take that",pol:"Asha, can you take that?"}],
+  summary:"Three action items captured: you update the rollout plan by Friday, Bikash sends the revised budget tomorrow, and Asha emails the vendor. Shall I create the tasks?"};
+SCEN.listen.words=SCEN.listen.segs.flatMap(x=>x.text.split(" "));
+function mk(R){
+  const P={R,spans:[],events:[],first:0,done:0,end:0,wordT:[]};
+  P.span=(lane,a,b,label,fam,nodes,edges)=>P.spans.push({lane,a,b,label,fam,nodes:nodes||[],edges:edges||[]});
+  P.ev=(t,fn,bus)=>P.events.push({t,fn,bus});
+  return P;
+}
+function words(P,ws,stream){
+  const R=P.R,a=300,b=R-250,n=ws.length;
+  ws.forEach((w,i)=>{
+    const t=Math.round(a+(b-a)*i/(n-1));P.wordT.push(t);
+    P.ev(t,()=>{S.heard=i+1});
+    if(stream) P.ev(t+160,()=>{S.partial=i+1},(i%4===3||i===n-1)?{tp:"asr.partial",fam:"per",m:`"${ws.slice(Math.max(0,i-5),i+1).join(" ")}" stable_upto=${Math.max(0,i-1)}`}:null);
+  });
+}
+function tokens(P,text,a,b,target){
+  const tk=text.split(" ");
+  tk.forEach((w,i)=>P.ev(Math.round(a+(b-a)*(i+1)/tk.length),()=>{S.stage[target]=tk.slice(0,i+1).join(" ")}));
+}
+const C=(title,opts,pick,note,type)=>({title,type:type||"Choice",opts,pick,note});
+const N=(title,p,note)=>({title,type:"Noul",opts:[["yes",p],["no",+(1-p).toFixed(2)]],pick:p>=.5?0:1,note});
+
+function build(key,mode){
+  const sc=SCEN[key],R=sc.R,P=mk(R),spec=mode==="spec";
+  P.span("Client",0,R,"Capture, VAD, 80 ms frames","per",["client"],["e_audio"]);
+  P.ev(0,null,{tp:"audio.frame",fam:"per",m:"seq=0, streaming 80 ms PCM frames"});
+  P.ev(0,()=>{S.speaking=true});
+  if(spec){P.span("ASR",120,R,key==="codeswitch"?"Streaming, IndicConformer + ne-en LoRA":"Streaming partials (Nemotron 3.5)","per",["asr"],["e_asr_s1"]);}
+  if(key!=="listen")words(P,sc.words,spec);
+  P.ev(R,()=>{S.speaking=false;S.released=true},{tp:"key.release",fam:"per",m:key==="listen"?"listening stopped":"hotkey released, end-of-utterance marker sent"});
+  if(spec&&key!=="listen"){P.span("Speakers",400,R,"Own-voice gate, diarization 0.32 s","per",["diar"],["e_diar","e_diar_s1"]);P.ev(720,null,{tp:"diar.segment",fam:"per",m:"spk_0 is_user=true p=0.98 (enrolled voice)"})}
+
+  if(spec&&sc.live){
+    const n=sc.words.length;
+    P.span("Live polish",600,R,"LocalAgreement commits stable words","s2",["polish"],["e_prefill"]);
+    sc.live.forEach((sn,k)=>{
+      const wi=Math.min(sn.at+2,n-1);const t=sn.at+2<=n-1?P.wordT[wi]+170:R-60;
+      P.span("Live polish",t,t+45,"Polish clause "+(k+1),"s2",["polish"],["e_polish_clean"]);
+      if(sn.edit)P.ev(t+46,()=>addEdit(sn.edit[0],sn.edit[1]));
+      P.ev(t+45,()=>{S.live=k},{tp:"polish.commit",fam:"s2",m:sn.html.replace(/<del>.*?<\/del>\s?/g,"").replace(/<[^>]+>/g,"")+(sn.chip?"  ["+sn.chip+"]":"")});
+    });
+    if(sc.next)P.ev(R-30,()=>{S.nextStep=true},{tp:"suggest.next",fam:"out",m:sc.next});
+  }
+  if(spec&&key==="dictate")P.ev(2050,()=>{S.ignored=true},{tp:"diar.segment",fam:"per",m:'spk_1 not the enrolled user: "lunch is here" dropped before polish'});
+  if(key==="dictate"){
+    if(spec){
+      P.span("LLM",900,R,"KV prefill from stable partials","s2",["cleanup"],["e_prefill"]);
+      P.ev(900,null,{tp:"llm.prefill",fam:"s2",m:"appending stable transcript prefix to KV cache"});
+      P.span("System 1",1500,1540,"Pre-route","s1",["s1"]);
+      P.ev(1540,()=>{dec(C("Mode, on partial",[["dictate",.72],["command",.2],["edit selection",.08]],0,"decided while speaking"));patch({mode:{value:"dictate",p:.72,source:"partial"}})},{tp:"s1.decision",fam:"s1",m:"mode=dictate p=0.72 (on partial)"});
+      P.ev(3360,()=>{S.latFlag=true},{tp:"asr.partial",fam:"per",m:'low confidence: "cuban eighties", 3 alternatives attached'});
+      P.span("System 1",3360,3400,"Lattice pick","s1",["s1"]);
+      P.ev(3400,()=>{S.latFixed=true;S.stage.chip="Kubernetes";dec(C('Span "cuban eighties"',[["Kubernetes",.91],["Cuban eighties",.06],["keep as heard",.03]],0,"dictionary + #eng-backend context, no LLM"));patch({lattice:[{heard:"cuban eighties",pick:"Kubernetes",p:.91}]})},{tp:"s1.decision",fam:"s1",m:"lattice pick: Kubernetes p=0.91"});
+      P.span("ASR",R,R+120,"Final pass, tail only","per",["asr"],["e_asr_s1"]);
+      P.ev(R+120,()=>{S.final=true},{tp:"asr.final",fam:"per",m:"text + alternatives for 1 span"});
+      P.span("System 1",R+120,R+165,"Fan-out: 4 questions","s1",["s1"]);
+      P.span("LLM",R+125,R+300,"Speculative cleanup decode","s2",["cleanup"],["e_route_d"]);
+      tokens(P,sc.clean,R+130,R+300,"draft");
+      P.ev(R+165,()=>{dec(C("Mode",[["dictate",.96],["command",.03],["edit selection",.01]],0));dec(N("Ends as a question (rising pitch)",.89,"prosody-aware punctuation"));dec(C("Format",[["chat message",.88],["bullet list",.07],["email",.05]],0));dec(N("Keep on device (private)",.04));patch({mode:{value:"dictate",p:.96},format:"chat",prosody:{question:.89},privacy:{local_only:false}})},{tp:"s1.decision",fam:"s1",m:"fan-out: mode, question, format, privacy in 45 ms"});
+      P.span("System 1",R+300,R+340,"Verify draft","s1",["verify"],["e_clean_verify"]);
+      P.ev(R+340,()=>{dec(N("Meaning preserved",.97,"check before insert"));dec(N("Answered instead of cleaned",.02))},{tp:"s1.decision",fam:"s1",m:"verify: meaning 0.97, answered 0.02, pass"});
+      P.span("Output",R+346,R+420,"Network + paste","out",["app"],["e_verify_app"]);
+      P.ev(R+420,()=>{S.stage.inserted=sc.clean;S.stage.draft=""},{tp:"ui.insert",fam:"out",m:"pasted into #eng-backend composer"});
+      P.first=P.done=420;
+    }else{
+      P.span("ASR",R,R+320,"Batch ASR after release","per",["asr"],["e_audio"]);
+      P.ev(R+320,()=>{S.partial=sc.words.length;S.final=true},{tp:"asr.final",fam:"per",m:"one hypothesis, no alternatives"});
+      P.span("LLM",R+320,R+640,"Prefill + decode, also guesses mode","s2",["cleanup"],["e_route_d"]);
+      tokens(P,sc.v1,R+420,R+640,"draft");
+      P.span("Output",R+640,R+645,"Length guard","s1",["verify"],["e_clean_verify"]);
+      P.span("Output",R+645,R+760,"Network + paste","out",["app"],["e_verify_app"]);
+      P.ev(R+760,()=>{S.stage.inserted=sc.v1;S.stage.draft=""},{tp:"ui.insert",fam:"out",m:"pasted; the LLM only saw one hypothesis"});
+      P.first=P.done=760;
+    }
+  }
+
+  if(key==="codeswitch"){
+    if(spec){
+      P.span("LLM",1000,R,"KV prefill from stable partials","s2",["cleanup"],["e_prefill"]);
+      P.span("System 1",1300,1340,"Language","s1",["s1"]);
+      P.ev(1340,()=>{dec(C("Spoken language, on partial",[["Nepali + English",.81],["Nepali",.12],["Hindi",.07]],0,"profile ne+en; routes to IndicConformer"));patch({language:{spoken:["ne","en"],p:.81}})},{tp:"s1.decision",fam:"s1",m:"language=ne+en p=0.81 (on partial)"});
+      P.span("ASR",R,R+140,"Final pass + code-switch LoRA","per",["asr"],["e_asr_s1"]);
+      P.ev(R+140,()=>{S.final=true},{tp:"asr.final",fam:"per",m:"ne-en code-switched text"});
+      P.span("System 1",R+140,R+185,"Fan-out: 4 questions","s1",["s1"]);
+      P.span("LLM",R+145,R+330,"Speculative cleanup decode","s2",["cleanup"],["e_route_d"]);
+      tokens(P,sc.scripts.roman,R+150,R+330,"draft");
+      P.ev(R+185,()=>{dec(C("Mode",[["dictate",.95],["command",.04],["edit selection",.01]],0));dec(N("Contains a self-correction",.93,"\"no wait\" resolved to the second version"));dec(C("Output script",[["romanized",.74],["mixed",.18],["Devanagari",.08]],0,"this thread is written in romanized Nepali"));dec(C("Output language",[["Nepali (reader's)",.86],["English",.14]],0,"write in the reader's language"));patch({mode:{value:"dictate",p:.95},language:{spoken:["ne","en"],output:"ne",script:"latin"}})},{tp:"s1.decision",fam:"s1",m:"fan-out: script=romanized 0.74, output=ne 0.86"});
+      P.span("System 1",R+330,R+370,"Verify draft","s1",["verify"],["e_clean_verify"]);
+      P.ev(R+370,()=>{dec(N("Meaning preserved",.95))},{tp:"s1.decision",fam:"s1",m:"verify pass"});
+      P.span("Output",R+370,R+378,"IndicXlit: keep romanized","s1",["verify"]);
+      P.span("Output",R+378,R+450,"Network + paste","out",["app"],["e_verify_app"]);
+      P.ev(R+450,()=>{S.stage.inserted=sc.scripts.roman;S.stage.draft="";S.stage.script="roman";S.stage.showScripts=true},{tp:"ui.insert",fam:"out",m:"pasted in romanized script"});
+      P.first=P.done=450;
+    }else{
+      P.span("ASR",R,R+340,"Batch ASR, generic model","per",["asr"],["e_audio"]);
+      P.ev(R+340,()=>{S.partial=sc.words.length;S.final=true;S.v1words=true},{tp:"asr.final",fam:"per",m:"generic model, misses Nepali words"});
+      P.span("LLM",R+340,R+700,"Prefill + decode, no script policy","s2",["cleanup"],["e_route_d"]);
+      tokens(P,sc.v1,R+440,R+700,"draft");
+      P.span("Output",R+705,R+820,"Network + paste","out",["app"],["e_verify_app"]);
+      P.ev(R+820,()=>{S.stage.inserted=sc.v1;S.stage.draft=""},{tp:"ui.insert",fam:"out",m:"pasted; spelling and script left to chance"});
+      P.first=P.done=820;
+    }
+  }
+
+  if(key==="command"){
+    if(spec){
+      P.span("System 1",1480,1520,"Pre-route","s1",["s1"]);
+      P.ev(1520,()=>{S.latFixed=true;dec(N("Speaker is the enrolled user",.98,"other voices could not trigger this command"));patch({speaker:{id:"spk_0",is_user:true,p:.98}});dec(C("Mode, on partial",[["command",.81],["dictate",.15],["edit selection",.04]],0,'heard "move my three pm with asha"'));dec(C('Span "asha"',[["Asha (contact)",.94],["a shah",.04],["keep as heard",.02]],0,"contacts used as candidates"));patch({mode:{value:"command",p:.81,source:"partial"},target:{person:"Asha"}})},{tp:"s1.decision",fam:"s1",m:"mode=command p=0.81 (on partial); lattice: Asha"});
+      P.span("Agent + tools",1540,1900,"Prefetch calendar.find (read-only)","s2",["tools"],["e_prefetch"]);
+      P.ev(1540,()=>{},{tp:"tool.call",fam:"s2",m:'calendar.find(today 15:00, attendee="Asha") (prefetch)'});
+      P.ev(1900,()=>{S.stage.found=true},{tp:"tool.result",fam:"s2",m:"Design review with Asha, today 15:00–16:00"});
+      P.span("System 1",2000,2040,"Pick UI template","s1",["s1"],["e_template"]);
+      P.ev(2040,()=>{dec(C("UI template, on partial",[["event reschedule card",.77],["plain text reply",.15],["event list",.08]],0,"template chosen before the sentence ends"));patch({ui:{template:"event_reschedule_card",p:.77}})},{tp:"ui.prewarm",fam:"out",m:"template event_reschedule_card preloaded"});
+      P.span("ASR",R,R+120,"Final pass, tail only","per",["asr"],["e_asr_s1"]);
+      P.ev(R+120,()=>{S.final=true},{tp:"asr.final",fam:"per",m:"full instruction text"});
+      P.span("System 1",R+120,R+170,"Fan-out: 5 questions","s1",["s1"]);
+      P.ev(R+170,()=>{
+        dec(C("Mode",[["command",.97],["dictate",.02],["edit selection",.01]],0));
+        dec(C("Action 1",[["calendar.move",.95],["calendar.create",.03],["none",.02]],0));
+        dec(C("Action 2",[["message.send",.92],["none",.06],["calendar.note",.02]],0));
+        dec({title:"Reversibility of calendar.move",type:"Score",opts:[["0 irreversible",.02],["1 needs care",.16],["2 undoable",.82]],pick:2,note:"score 1.80, above threshold: do it, offer Undo"});
+        dec({title:"Reversibility of message.send",type:"Score",opts:[["0 irreversible",.74],["1 needs care",.22],["2 undoable",.04]],pick:0,note:"score 0.30, below threshold: ask for a tap"});
+        patch({mode:{value:"command",p:.97},action:[{tool:"calendar.move",args:{to:"Friday 15:00"},autonomy:"auto+undo"},{tool:"message.send",to:"Asha",autonomy:"confirm"}],reversibility:{move:1.8,message:.3},voice:{reply:true,voice:"warm-en",register:"casual"}});
+      },{tp:"s1.decision",fam:"s1",m:"fan-out: 2 actions, reversibility scores, template confirmed"});
+      P.span("Output",R+170,R+190,"Render skeleton","out",["genui"],["e_template"]);
+      P.ev(R+190,()=>{S.stage.skeleton=true},{tp:"ui.patch",fam:"out",m:"skeleton of event_reschedule_card rendered"});
+      P.span("Output",R+200,R+620,"Holding line","out",["tts"]);
+      P.ev(R+200,()=>{voice(SCEN.command.hold,420)},{tp:"tts.chunk",fam:"out",m:'"On it." (holding line)'});
+      P.span("Agent + tools",R+170,R+780,"System 2 plans, fills slots","s2",["agent"],["e_route_c","e_ui"]);
+      P.ev(R+300,()=>{S.stage.slots.event=true},{tp:"ui.patch",fam:"out",m:"slots: event, from (from prefetched data)"});
+      P.span("Agent + tools",R+380,R+560,"calendar.move (auto, undoable)","s2",["tools"],["e_tools"]);
+      P.ev(R+380,null,{tp:"tool.call",fam:"s2",m:'calendar.move(id=dr-asha, to="Fri 15:00")'});
+      P.ev(R+560,()=>{S.stage.slots.moved=true},{tp:"tool.result",fam:"s2",m:"moved; no conflicts on Friday"});
+      P.ev(R+760,()=>{S.stage.slots.msg=true},{tp:"ui.patch",fam:"out",m:"slot: message draft (awaiting tap)"});
+      P.span("Output",R+190,R+800,"UI slot patches","out",["genui"],["e_ui"]);
+      P.span("Output",R+820,R+4000,"Spoken summary","out",["tts"],["e_tts"]);
+      P.ev(R+820,()=>{voice(SCEN.command.summary,3180)},{tp:"tts.chunk",fam:"out",m:"summary streaming (Kokoro)"});
+      P.first=190;P.done=800;
+    }else{
+      P.span("ASR",R,R+320,"Batch ASR after release","per",["asr"],["e_audio"]);
+      P.ev(R+320,()=>{S.partial=sc.words.length;S.final=true},{tp:"asr.final",fam:"per",m:"one hypothesis"});
+      P.span("Agent + tools",R+320,R+1900,"LLM: understand, choose tools","s2",["agent"],["e_route_c"]);
+      P.span("Agent + tools",R+1900,R+2300,"calendar.find + move","s2",["tools"],["e_tools"]);
+      P.ev(R+2300,()=>{S.stage.found=true},{tp:"tool.result",fam:"s2",m:"moved"});
+      P.span("Output",R+2300,R+3100,"LLM writes the UI JSON","s2",["agent"],["e_ui"]);
+      P.ev(R+3100,()=>{S.stage.skeleton=true;S.stage.slots={event:true,moved:true,msg:true}},{tp:"ui.render",fam:"out",m:"whole card appears at once"});
+      P.span("Output",R+3200,R+6200,"Spoken summary","out",["tts"],["e_tts"]);
+      P.ev(R+3200,()=>{voice(SCEN.command.summary,3000)},{tp:"tts.chunk",fam:"out",m:"summary after the UI is done"});
+      P.first=3100;P.done=3100;
+    }
+  }
+  if(key==="listen"){
+    const segs=sc.segs,Wn=sc.words.length,gap=420,per=(R-550-gap*(segs.length-1))/Wn;
+    let t=300,wi=0;const segEnd=[],segStart=[];
+    segs.forEach((sg,k)=>{const ws=sg.text.split(" ");segStart.push(Math.round(t));ws.forEach((w,j)=>{const i=wi++;const tt=Math.round(t);P.wordT.push(tt);P.ev(tt,()=>{S.heard=i+1});if(spec)P.ev(tt+160,()=>{S.partial=i+1},j===ws.length-1?{tp:"asr.partial",fam:"per",m:`"${sg.text}"`}:null);t+=per});segEnd.push(Math.round(t-per+200));t+=gap});
+    const spkId={You:"spk_0",Asha:"spk_1",Bikash:"spk_2"};
+    const lab=(k)=>{S.spk[k]=true};
+    const dbus=(k,extra)=>({tp:"diar.segment",fam:"per",m:`${spkId[segs[k].spk]} (${segs[k].spk}${segs[k].spk==="You"?", enrolled":""}) ${segStart[k]}-${segEnd[k]} ms${extra||""}`});
+    const ACT=[
+      ()=>{dec(C("Segment 1: what is it?",[["update or decision",.86],["action item",.08],["chit-chat",.06]],0,"Asha: vendor demo slipped"));S.decision="Vendor demo moved to next Tuesday"},
+      ()=>{dec(N("Segment 2 is an action item",.94));dec(C("Owner",[["You",.97],["Asha",.02],["Bikash",.01]],0,"the speaker committed to it"));dec(C("Due",[["Friday",.9],["not stated",.07],["tomorrow",.03]],0));S.actions.push({task:"Update the rollout plan",owner:"You",due:"Friday"});addEdit("Action","Update the rollout plan: You, by Friday")},
+      ()=>{dec(N("Segment 3 is an action item",.93));dec(C("Owner",[["Bikash",.95],["You",.03],["Asha",.02]],0));dec(C("Due",[["tomorrow",.91],["not stated",.06],["Friday",.03]],0));S.actions.push({task:"Send the revised budget",owner:"Bikash",due:"tomorrow"});addEdit("Action","Send the revised budget: Bikash, tomorrow")},
+      ()=>{dec(N("Segment 4 is an action item",.88));dec(C("Owner",[["unassigned",.61],["Asha",.22],["You",.17]],0,"nobody has been named yet"));S.actions.push({task:"Email the vendor to confirm",owner:"unassigned",due:""});addEdit("Action","Email the vendor: no owner yet")}
+    ];
+    if(spec){
+      P.span("Speakers",400,R,"Streaming diarization, 1.04 s preset","per",["diar"],["e_diar","e_diar_s1"]);
+      P.span("Live polish",600,R,"LocalAgreement commits stable words","s2",["polish"],["e_prefill"]);
+      [0,1,2,3].forEach(k=>{
+        const tl=segEnd[k]+1040;
+        P.ev(tl,()=>{lab(k);addEdit("Speaker",segs[k].spk+": “"+segs[k].pol+"”")},dbus(k,", p=0.9"+(6-k%3)));
+        P.span("System 1",tl,tl+40,"Segment "+(k+1),"s1",["s1"],["e_diar_s1"]);
+        P.span("Live polish",tl,tl+45,"Polish line "+(k+1),"s2",["polish"]);
+        P.ev(tl+40,()=>{ACT[k]();patch({mode:{value:"listen"},speakers:["You","Asha","Bikash"],actions:S.actions.map(a=>({task:a.task,owner:a.owner,due:a.due||null}))})},{tp:"s1.decision",fam:"s1",m:"segment "+(k+1)+" classified"});
+      });
+      P.span("ASR",R,R+150,"Final pass, last segment","per",["asr"],["e_asr_s1"]);
+      P.span("Speakers",R,R+150,"Final speaker pass","per",["diar"],["e_diar"]);
+      P.ev(R+150,()=>{S.final=true;lab(4);addEdit("Speaker","You: “"+segs[4].pol+"”")},dbus(4,", final pass"));
+      P.span("System 1",R+150,R+200,"Fan-out: re-ask owners","s1",["s1"],["e_diar_s1"]);
+      P.ev(R+200,()=>{dec(N("Segment 5 is a new action item",.09,"it assigns the previous one"));dec(C("Owner of \"email the vendor\", re-asked",[["Asha",.92],["unassigned",.05],["You",.03]],0,"later context revises an earlier decision"));S.actions.forEach(a=>{if(a.owner==="unassigned")a.owner="Asha"});addEdit("Reassigned","Email the vendor now belongs to Asha, from what you said last");patch({actions:S.actions.map(a=>({task:a.task,owner:a.owner,due:a.due||null})),ui:{template:"meeting_notes_card"}})},{tp:"s1.decision",fam:"s1",m:'owner of "email the vendor" -> Asha p=0.92'});
+      P.span("Output",R+200,R+220,"Render skeleton","out",["genui"],["e_template"]);
+      P.ev(R+220,()=>{S.stage.skeleton=true;addEdit("Shown","Notes card with 3 owned tasks, 220 ms after you stop")},{tp:"ui.patch",fam:"out",m:"meeting_notes_card skeleton with 3 owned actions"});
+      P.span("Agent + tools",R+220,R+700,"System 2 writes the summary line","s2",["agent"],["e_route_c","e_ui"]);
+      P.span("Output",R+220,R+720,"UI slot patches","out",["genui"],["e_ui"]);
+      P.ev(R+700,()=>{S.stage.slots.summary=true},{tp:"ui.patch",fam:"out",m:"slot: summary"});
+      P.span("Output",R+720,R+5200,"Spoken summary","out",["tts"],["e_tts"]);
+      P.ev(R+720,()=>{voice(SCEN.listen.summary,4400)},{tp:"tts.chunk",fam:"out",m:"summary streaming"});
+      P.first=220;P.done=700;
+    }else{
+      P.span("ASR",R,R+1200,"Batch ASR of the recording","per",["asr"],["e_audio"]);
+      P.ev(R+1200,()=>{S.partial=Wn;S.final=true},{tp:"asr.final",fam:"per",m:"full transcript, no speakers"});
+      P.span("Speakers",R+1200,R+2100,"Offline diarization","per",["diar"],["e_diar"]);
+      P.ev(R+2100,()=>{[0,1,2,3,4].forEach(lab)},{tp:"diar.segment",fam:"per",m:"5 segments labelled after the fact"});
+      P.span("Agent + tools",R+2100,R+5600,"LLM reads transcript, writes notes","s2",["agent"],["e_route_c","e_ui"]);
+      P.ev(R+5600,()=>{S.decision="Vendor demo moved to next Tuesday";S.actions=[{task:"Update the rollout plan",owner:"You",due:"Friday"},{task:"Send the revised budget",owner:"Bikash",due:"tomorrow"},{task:"Email the vendor to confirm",owner:"Asha",due:""}];S.stage.skeleton=true;S.stage.slots.summary=true},{tp:"ui.render",fam:"out",m:"whole notes card appears at once"});
+      P.span("Output",R+5700,R+9900,"Spoken summary","out",["tts"],["e_tts"]);
+      P.ev(R+5700,()=>{voice(SCEN.listen.summary,4200)},{tp:"tts.chunk",fam:"out",m:"summary after the notes are written"});
+      P.first=P.done=5600;
+    }
+  }
+  const E=(t,k,d)=>P.ev(t,()=>addEdit(k,d));
+  if(spec){
+    if(key==="dictate"){E(2050,"Ignored","“lunch is here” is not your voice");E(3400,"Recognised","“cuban eighties” is Kubernetes, from your dictionary");E(R-30,"Suggested",sc.next.replace("Next step offered: ",""));E(R+165,"Punctuated","Your voice rose at the end, so it ends with “?”");E(R+340,"Checked","Meaning kept (0.97) and not answered as a question");E(R+420,"Inserted","Pasted into #eng-backend, 420 ms after you let go")}
+    if(key==="codeswitch"){E(1340,"Detected","Nepali + English, routed to the Indic speech model");E(R-30,"Suggested",sc.next.replace("Next step offered: ",""));E(R+185,"Decided","Stays romanized Nepali (0.74); other scripts one tap away");E(R+450,"Inserted","Pasted into the chat, 450 ms after you let go")}
+    if(key==="command"){E(1520,"Speaker","Your enrolled voice (0.98), so actions are allowed");E(1900,"Found","Your 3 PM: Design review with Asha");E(2040,"Prepared","Reschedule card chosen before you finished");E(R+170,"Decided","Move runs now (undoable); the message waits for your tap");E(R+190,"Shown","Card appears 190 ms after you let go");E(R+200,"Spoke","“On it.”");E(R+560,"Done","Moved to Friday 15:00, no conflicts");E(R+820,"Spoke","Summary of what changed")}
+    if(key==="listen"){sc.segs.forEach((sg,k2)=>{});}
+  }else{
+    E(R,"Waiting","The old pipeline does nothing until you let go");
+    if(key==="dictate")E(R+760,"Inserted","Cleaned in one pass; “Cuban eighties” slipped through");
+    if(key==="codeswitch")E(R+820,"Inserted","Generic model: Nepali words misspelled, script left to chance");
+    if(key==="command")E(R+3100,"Shown","Whole card appears at once, 3.1 s after you let go");
+    if(key==="listen")E(R+5600,"Shown","Notes appear 5.6 s after you stop, all at once");
+  }
+  P.events.sort((a,b)=>a.t-b.t);
+  P.end=Math.max(...P.spans.map(s=>s.b))+60;
+  P.view=Math.min(P.end,R+Math.max(P.done*1.5,900));
+  return P;
+}
+
+/* ---------- state ---------- */
+let S,PLAN,idx=0,clock=0,playing=false,lastTs=null,raf=null;
+const ui={scen:"dictate",mode:"spec",slow:.15,speak:true};
+function fresh(){
+  return{heard:0,partial:0,speaking:false,released:false,final:false,latFlag:false,latFixed:false,v1words:false,
+    decs:[],intent:{utterance_id:"u_"+Math.random().toString(16).slice(2,6)},lastKeys:[],bus:[],
+    spk:[],actions:[],decision:"",edits:[],live:-1,ignored:false,nextStep:false,stage:{draft:"",inserted:"",chip:null,script:"roman",showScripts:false,found:false,skeleton:false,slots:{},voice:null}};
+}
+function dec(d){S.decs.unshift(d);renderDecs()}
+function patch(p){Object.assign(S.intent,p);S.lastKeys=Object.keys(p);renderIntent()}
+function voice(text,dur){
+  S.stage.voice={text,start:clock,dur};
+  if(ui.speak&&"speechSynthesis" in window){try{const u=new SpeechSynthesisUtterance(text);u.lang="en-US";u.rate=1.02;window.speechSynthesis.speak(u)}catch(e){}}
+}
+function reset(){
+  playing=false;cancelAnimationFrame(raf);raf=null;lastTs=null;
+  if("speechSynthesis" in window){try{speechSynthesis.cancel()}catch(e){}}
+  S=fresh();PLAN=build(ui.scen,ui.mode);idx=0;clock=0;packets.length=0;lastSpawn={};
+  $("#playBtn").textContent="Play";
+  $("#stageHint").textContent=SCEN[ui.scen].hint;
+  $("#liveTitle").textContent={dictate:"Dictate into a team chat",codeswitch:"Dictate in Nepali and English",command:"Say a command, get a card and a reply",listen:"Take meeting notes with names"}[ui.scen];
+  $("#bus").innerHTML="";saySig="";renderDecs();renderIntent();buildGantt();renderRace();renderEdits();frame();
+  if(typeof renderPlacement==="function")renderPlacement();
+  renderTally();
+}
+
+/* ---------- loop ---------- */
+function process(){
+  while(idx<PLAN.events.length&&PLAN.events[idx].t<=clock){
+    const e=PLAN.events[idx++];
+    if(e.fn)e.fn();
+    if(e.bus)logBus(e.t,e.bus);
+  }
+}
+function tick(ts){
+  if(!playing)return;
+  if(lastTs==null)lastTs=ts;
+  const dt=Math.min(64,ts-lastTs);lastTs=ts;
+  const rate=(clock<PLAN.R-150||clock>PLAN.R+PLAN.done+250)?1:ui.slow;
+  clock+=dt*rate;
+  if(clock>=PLAN.end){clock=PLAN.end;process();frame();playing=false;$("#playBtn").textContent="Replay";return}
+  process();frame();
+  raf=requestAnimationFrame(tick);
+}
+$("#playBtn").addEventListener("click",()=>{
+  if(playing){playing=false;$("#playBtn").textContent="Play";return}
+  if(clock>=PLAN.end)reset();
+  playing=true;lastTs=null;$("#playBtn").textContent="Pause";raf=requestAnimationFrame(tick);
+});
+$("#stepBtn").addEventListener("click",()=>{
+  playing=false;$("#playBtn").textContent=clock>=PLAN.end?"Replay":"Play";
+  let j=idx;
+  while(j<PLAN.events.length&&!PLAN.events[j].bus)j++;
+  clock=j<PLAN.events.length?Math.max(clock,PLAN.events[j].t):PLAN.end;
+  process();frame();
+  if(clock>=PLAN.end)$("#playBtn").textContent="Replay";
+});
+$("#resetBtn").addEventListener("click",reset);
+function segBind(id,key){
+  const seg=$(id);
+  seg.addEventListener("click",e=>{
+    const b=e.target.closest("button");if(!b)return;
+    seg.querySelectorAll("button").forEach(x=>x.setAttribute("aria-pressed",x===b?"true":"false"));
+    ui[key]=b.dataset.v;reset();
+  });
+}
+segBind("#scenSeg","scen");segBind("#modeSeg","mode");
+$("#slow").addEventListener("change",e=>{ui.slow=+e.target.value});
+$("#speakChk").addEventListener("change",e=>{ui.speak=e.target.checked;if(!ui.speak&&"speechSynthesis" in window){try{speechSynthesis.cancel()}catch(err){}}});
+
+/* ---------- rendering ---------- */
+function active(span){return clock>=span.a&&clock<span.b}
+const packets=[];let lastSpawn={};
+const reduce=matchMedia("(prefers-reduced-motion: reduce)").matches;
+function frame(){
+  // clock + phase
+  $("#clock").textContent=clock<=0?"t = 0 ms":clock<PLAN.R?`t = ${Math.round(clock)} ms (speaking)`:`release + ${Math.round(clock-PLAN.R)} ms`;
+  let phase="Press Play to start speaking";
+  if(clock>0&&clock<PLAN.R)phase=ui.scen==="listen"?"Meeting in progress, Listen mode":"User is speaking, hotkey held";
+  else if(clock>=PLAN.R&&clock<PLAN.R+PLAN.done)phase="Key released: racing to the first response";
+  else if(clock>=PLAN.R+PLAN.done&&clock<PLAN.end)phase="Response delivered, finishing up";
+  else if(clock>=PLAN.end)phase=`Done: first response ${PLAN.first} ms after release`;
+  $("#phase").textContent=phase;
+  // nodes & edges
+  const onN=new Set(),onE=new Set();
+  PLAN.spans.forEach(s=>{if(active(s)){s.nodes.forEach(n=>onN.add(n));s.edges.forEach(e=>onE.add(e))}});
+  for(const id in nodeEls)nodeEls[id].classList.toggle("on",onN.has(id));
+  for(const id in edgeEls)edgeEls[id].classList.toggle("on",onE.has(id));
+  // packets
+  if(!reduce&&playing){
+    const now=performance.now();
+    onE.forEach(id=>{if(!lastSpawn[id]||now-lastSpawn[id]>230){lastSpawn[id]=now;spawn(id,now)}});
+  }
+  animPackets();
+  drawWave();renderTranscript();renderStage();updateGantt();drawerStatus();renderSay();
+}
+function famOfEdge(id){const e=EDGES[id];return NODES[e.b].fam==="out"?"out":NODES[e.a].fam}
+function spawn(id,now){
+  const c=document.createElementNS(NS,"circle");c.setAttribute("r",3.6);
+  c.setAttribute("fill",`var(--${famOfEdge(id)})`);gPk.appendChild(c);
+  packets.push({id,c,t0:now,L:edgeEls[id].getTotalLength()});
+}
+function animPackets(){
+  const now=performance.now();
+  for(let i=packets.length-1;i>=0;i--){
+    const p=packets[i],u=(now-p.t0)/650;
+    if(u>=1||!playing&&u>0.999){p.c.remove();packets.splice(i,1);continue}
+    const pt=edgeEls[p.id].getPointAtLength(p.L*u);
+    p.c.setAttribute("cx",pt.x);p.c.setAttribute("cy",pt.y);
+  }
+}
+setInterval(()=>{if(!playing&&packets.length){animPackets()}},50);
+
+/* waveform */
+const cv=$("#wave"),cx=cv.getContext("2d");
+function cssv(n){return getComputedStyle(document.documentElement).getPropertyValue(n).trim()}
+function amp(t){
+  if(!PLAN)return 0;let a=0.03;
+  PLAN.wordT.forEach(wt=>{const d=t-wt;if(d>-60&&d<220){a=Math.max(a,0.25+0.75*Math.sin(Math.PI*(d+60)/280))}});
+  return a;
+}
+function drawWave(){
+  const dpr=window.devicePixelRatio||1,w=cv.clientWidth,h=cv.clientHeight||44;
+  if(cv.width!==Math.round(w*dpr)||cv.height!==Math.round(h*dpr)){cv.width=Math.round(w*dpr);cv.height=Math.round(h*dpr)}
+  cx.setTransform(dpr,0,0,dpr,0,0);cx.clearRect(0,0,w,h);
+  if(!PLAN)return;
+  const R=PLAN.R,n=Math.floor(w/4),mid=h/2;
+  const per=cssv("--per"),line=cssv("--line"),out=cssv("--out");
+  for(let i=0;i<n;i++){
+    const t=(i/n)*(R+300);const a=amp(t)*(0.65+0.35*Math.abs(Math.sin(i*1.7)));
+    const hh=Math.max(1.2,a*(h-8)/2);
+    cx.fillStyle=t<=clock?per:line;cx.fillRect(i*4,mid-hh,2.6,hh*2);
+  }
+  const rx=(R/(R+300))*w;cx.strokeStyle=out;cx.setLineDash([4,3]);cx.beginPath();cx.moveTo(rx,0);cx.lineTo(rx,h);cx.stroke();cx.setLineDash([]);
+  const px=Math.min(w,(Math.min(clock,R+300)/(R+300))*w);cx.fillStyle=cssv("--ink");cx.fillRect(px-1,0,2,h);
+}
+window.addEventListener("resize",drawWave);
+
+function renderTranscript(){
+  const sc=SCEN[ui.scen],el=$("#transcript");
+  if(ui.scen==="listen"){
+    const k=S.partial;
+    if(!k){el.innerHTML=`<span class="empty">${S.speaking?(ui.mode==="seq"?"Recording; the sequential pipeline transcribes only after you stop…":"Listening…"):"Speaker-labelled transcript appears here."}</span>`;return}
+    let wi=0,out=[];
+    sc.segs.forEach((sg,j)=>{const ws=sg.text.split(" ");const n=Math.max(0,Math.min(ws.length,k-wi));wi+=ws.length;if(n>0){const nm=S.spk[j]?sg.spk:"Speaker ?";out.push(`<span class="${S.spk[j]?"spk-"+sg.spk:"spk-unk"}">${nm}:</span> <span class="w">${esc(ws.slice(0,n).join(" "))}</span>`)}});
+    el.innerHTML=out.join(" &nbsp; ");return;
+  }
+  let ws=sc.words;
+  if(ui.mode==="seq"&&ui.scen==="codeswitch"&&S.v1words)ws="umm boss lie bhannu parcha key report no wait report bholi samma ready huncha".split(" ");
+  const k=S.partial;
+  if(k===0){el.innerHTML=S.speaking?`<span class="empty">${ui.mode==="seq"?"Sequential pipeline: nothing is transcribed until the key is released…":"Listening…"}</span>`:`<span class="empty">Transcript appears here as partial results stream in.</span>`;return}
+  el.innerHTML=ws.slice(0,k).map((w,i)=>{
+    let c="w";if(!S.final&&i>=k-2)c+=" unstable";
+    if(sc.lattice&&sc.lattice.includes(i)&&ui.mode==="spec"){if(S.latFixed)c+=" fixed";else if(S.latFlag)c+=" lat";}
+    let txt=w;
+    if(S.latFixed&&sc.lattice&&ui.scen==="dictate"&&i===sc.lattice[0])txt="Kubernetes";
+    if(S.latFixed&&sc.lattice&&ui.scen==="dictate"&&i===sc.lattice[1])return "";
+    if(ui.scen==="command"&&i===5&&S.latFixed)txt="Asha";
+    return `<span class="${c}">${txt}</span>`;
+  }).join(" ");
+}
+
+/* stage */
+function esc(s){return s.replace(/[&<>]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;"}[c]))}
+let stageSig="";
+function livePreview(sc){
+  const snaps=sc.live||[],c=S.live;const sn=c>=0?snaps[c]:null;
+  const from=sn?sn.at+1:0,tail=sc.words.slice(from,S.partial);
+  const m=new Map();snaps.slice(0,c+1).filter(x=>x.chip).forEach(x=>{const k=x.chip.split(":")[0];m.delete(k);m.set(k,x.chip)});
+  const chips=[...m.values()].map(x=>`<span class="chip lp">${esc(x)}</span>`).join("");
+  return{html:(sn?sn.html:"")+(tail.length?` <span class="tent">${esc(tail.join(" "))}</span>`:""),chips};
+}
+function renderStage(force){
+  const st=S.stage,el=$("#stage"),sc=SCEN[ui.scen];
+  const v0=st.voice;const vk=v0?Math.ceil(v0.text.split(" ").length*Math.max(0,Math.min(1,(clock-v0.start)/v0.dur))):-1;
+  const sig=JSON.stringify([ui.scen,ui.mode,st,S.speaking,S.released,S.final,S.latFlag,S.latFixed,vk,S.spk,S.actions,S.partial,S.live,S.ignored,S.nextStep]);
+  const speakingNow0=v0&&clock>=v0.start&&clock<v0.start+v0.dur;
+  if(!force&&sig===stageSig){
+    if(speakingNow0){const vb=$("#vbars");if(vb)vb.querySelectorAll("span").forEach((s,i)=>{s.style.height=(6+Math.abs(Math.sin(clock/90+i*1.3))*20)+"px"})}
+    return;
+  }
+  stageSig=sig;
+  if(ui.scen==="dictate"||ui.scen==="codeswitch"){
+    const cs=ui.scen==="codeswitch";
+    const head=cs?`<div class="apphead"><span><b>Ramesh</b></span><span>chat</span></div>`:`<div class="apphead"><span><b>#eng-backend</b></span><span>team chat</span></div>`;
+    const msgs=cs?`<div class="msg"><div class="who">Ramesh</div>ok, report kahile samma? boss le sodhdai hunuhunchha</div>`:`<div class="msg"><div class="who">Maya</div>Is standup still at 10 tomorrow? The k8s upgrade window overlaps.</div>`;
+    let comp;
+    if(st.inserted){
+      const txt=cs&&ui.mode==="spec"?sc.scripts[st.script]:st.inserted;
+      comp=`<div class="composer done">${esc(txt)}<span class="caret"></span></div>`;
+    }else if(st.draft){comp=`<div class="composer"><span class="draft">${esc(st.draft)}</span></div>`}
+    else if(ui.mode==="spec"&&sc.live&&S.partial>0){const lp=livePreview(sc);comp=`<div class="composer live"><span class="livetag">Live polish</span> ${lp.html}<span class="caret"></span></div>${lp.chips?`<div class="chips livechips">${lp.chips}</div>`:""}`}
+    else comp=`<div class="composer"><span class="draft">${S.speaking?(ui.mode==="seq"?"(recording; nothing is shown until you let go)":"(holding hotkey…)"):""}</span><span class="caret"></span></div>`;
+    let chips="";
+    if(!cs&&ui.mode==="spec"&&(S.latFlag||S.latFixed))chips=`<div class="chips">${S.latFixed?`<span class="chip per">“cuban eighties” → Kubernetes · 0.91</span>`:`<span class="chip s1">Low-confidence span: “cuban eighties” (3 alternatives)</span>`}</div>`;
+    if(cs&&ui.mode==="spec"&&S.final)chips=`<div class="chips"><span class="chip per">Routed to IndicConformer + ne-en LoRA</span></div>`;
+    let scripts="";
+    if(cs&&ui.mode==="spec"&&st.showScripts){
+      const opts=[["roman","Romanized","0.74"],["mixed","Mixed","0.18"],["deva","Devanagari","0.08"],["en","English (for an English reader)",""]];
+      scripts=`<p class="note">System 1 picked romanized from this thread. Switch the script; IndicXlit converts locally in a few milliseconds.</p><div class="scripts" role="group" aria-label="Output script">${opts.map(o=>`<button type="button" data-s="${o[0]}" aria-pressed="${st.script===o[0]}">${o[1]}${o[2]?` <small>${o[2]}</small>`:""}</button>`).join("")}</div>`;
+    }
+    let note="";
+    if(ui.mode==="seq"&&st.inserted)note=cs?`<p class="note">A generic model and a single hypothesis: Nepali words are misspelled and the script is whatever came out.</p>`:`<p class="note">The cleanup LLM only saw one hypothesis, so “Cuban eighties” went through.</p>`;
+    const ign=S.ignored&&ui.mode==="spec"&&!cs?`<p class="note ign">Ignored, not your voice: “lunch is here” (diarization, own-voice check 0.97)</p>`:"";
+    const nxt=S.nextStep&&ui.mode==="spec"&&sc.next?`<div class="nextstep"><span>${esc(sc.next)}</span><button type="button">Yes</button><button type="button" class="ghostb">Not now</button></div>`:"";
+    el.innerHTML=`<div class="appwin">${head}<div class="msgs">${msgs}</div>${ign}${chips}${comp}${scripts}${nxt}</div>${note}<div class="voice"><span class="caption tosay">No spoken reply in Dictate mode; text goes straight into the app.</span></div>`;
+    el.querySelectorAll(".scripts button").forEach(b=>b.addEventListener("click",()=>{S.stage.script=b.dataset.s;renderStage()}));
+    return;
+  }
+  if(ui.scen==="listen"){
+    const spec=ui.mode==="spec",k=S.partial;let segHTML="",wi=0;
+    sc.segs.forEach((sg,j)=>{const ws=sg.text.split(" ");const n=Math.max(0,Math.min(ws.length,k-wi));wi+=ws.length;if(n>0){const nm=S.spk[j]?sg.spk+(sg.spk==="You"?" (enrolled voice)":""):"Speaker ?";segHTML+=`<div class="msg"><div class="who ${S.spk[j]?"spk-"+sg.spk:"spk-unk"}">${nm}</div>${spec&&S.spk[j]?`<span class="polished">${esc(sg.pol)}</span>`:`<span class="${spec?"tent":""}">${esc(ws.slice(0,n).join(" "))}</span>`}</div>`}});
+    if(!segHTML)segHTML=`<div class="empty-stage">${S.speaking?(spec?"Listening…":"Recording; nothing is transcribed until you stop."):"Press Play to start the meeting."}</div>`;
+    const acts=S.actions.length&&!st.skeleton?`<p class="note">Action items found while the meeting runs</p><div class="chips">${S.actions.map(a=>`<span class="chip ${a.owner==="unassigned"?"s1":"per"}">${esc(a.task)}: <b>${esc(a.owner)}</b>${a.due?", "+esc(a.due):""}</span>`).join("")}</div>`:"";
+    let card="";
+    if(st.skeleton){
+      const sk=`<span class="sk"></span>`;
+      card=`<div class="card"><h3>Stand-up notes</h3><div class="row"><span class="k">Summary</span><span>${st.slots.summary?"Vendor demo slipped to next Tuesday; rollout plan and budget are being revised.":sk}</span></div><div class="row"><span class="k">Decision</span><span>${esc(S.decision||"")}</span></div><table class="acts"><tbody>${S.actions.map(a=>`<tr><td class="spk-${a.owner}">${esc(a.owner)}</td><td>${esc(a.task)}</td><td>${esc(a.due||"no date")}</td></tr>`).join("")}</tbody></table><div class="cardbtns"><button type="button" class="primary">Create ${S.actions.length} tasks</button><button type="button">Share notes</button></div>${spec?`<p class="note" style="margin:8px 0 0">Owners came from diarization plus System 1, decided while people were still talking.</p>`:""}</div>`;
+    }else if(S.released){card=`<div class="empty-stage">${spec?"Assembling the notes card…":"Nothing yet: transcribe, diarize, then one long LLM call to write the notes."}</div>`}
+    let vhtml=`<span class="caption tosay">Spoken summary will play here.</span>`,bars="";for(let i=0;i<14;i++)bars+=`<span></span>`;
+    const v=st.voice;if(v){const u=Math.max(0,Math.min(1,(clock-v.start)/v.dur));const ws=v.text.split(" ");const kk=Math.ceil(ws.length*u);vhtml=`<span class="caption"><span class="said">${esc(ws.slice(0,kk).join(" "))}</span> <span class="tosay">${esc(ws.slice(kk).join(" "))}</span></span>`}
+    el.innerHTML=`<div class="appwin"><div class="apphead"><span><b>Weekly stand-up</b></span><span>Listen mode, 3 voices</span></div><div class="msgs" style="max-height:260px;overflow:auto">${segHTML}</div>${acts}${card}<div class="voice"><div class="bars" id="vbars">${bars}</div>${vhtml}</div></div>`;
+    return;
+  }
+  // command
+  const moved=st.slots.moved,spec=ui.mode==="spec";
+  const cal=`<div class="cal"><div class="calday"><div class="d">Today</div><div class="ev ${moved?"ghost":""} ${st.found&&!moved?"hl":""}">15:00 Design review with Asha</div></div><div class="calday"><div class="d">Friday</div>${moved?`<div class="ev">15:00 Design review with Asha</div>`:""}</div></div>`;
+  let card="";
+  if(st.skeleton){
+    const sk=`<span class="sk"></span>`;
+    card=`<div class="card"><h3>Reschedule</h3>
+      <div class="row"><span class="k">Event</span><span>${st.slots.event?"Design review with Asha":sk}</span></div>
+      <div class="row"><span class="k">Change</span><span>${st.slots.event?"Today 15:00 → Friday 15:00":sk}</span></div>
+      <div class="row"><span class="k">Status</span><span>${moved?`<span class="okbadge">Moved, no conflicts</span>`:sk}</span></div>
+      <div class="row"><span class="k">Message</span><span>${st.slots.msg?esc(SCEN.command.msg):sk}</span></div>
+      <div class="cardbtns">${moved?`<button type="button">Undo move</button>`:""}${st.slots.msg?`<button type="button" class="primary">Send to Asha</button>`:""}</div>
+      ${spec&&st.slots.msg?`<p class="note" style="margin:8px 0 0">The move ran on its own because it can be undone; the message waits for a tap because it cannot.</p>`:""}</div>`;
+  }else if(S.released){
+    card=`<div class="empty-stage">${spec?"Waiting for the template…":"Nothing on screen yet: the LLM is still reasoning, then it must write the whole UI."}</div>`;
+  }
+  // voice
+  let vhtml=`<span class="caption tosay">Spoken reply will play here.</span>`,bars="";
+  const v=st.voice;
+  for(let i=0;i<14;i++)bars+=`<span></span>`;
+  if(v){
+    const u=Math.max(0,Math.min(1,(clock-v.start)/v.dur));const ws=v.text.split(" ");const k=Math.ceil(ws.length*u);
+    vhtml=`<span class="caption"><span class="said">${esc(ws.slice(0,k).join(" "))}</span> <span class="tosay">${esc(ws.slice(k).join(" "))}</span></span>`;
+  }
+  let li="";
+  if(spec&&sc.live&&S.partial>0){const lp=livePreview(sc);li=`<div class="liveintent"><span class="livetag">Live intent</span> ${lp.html}${lp.chips?`<div class="chips livechips">${lp.chips}</div>`:""}</div>`}
+  el.innerHTML=`<div class="appwin"><div class="apphead"><span><b>Calendar</b> in focus</span><span>Command mode</span></div>${li}${cal}${card}<div class="voice"><div class="bars" id="vbars">${bars}</div>${vhtml}</div></div>`;
+  const speakingNow=v&&clock>=v.start&&clock<v.start+v.dur;
+  if(speakingNow){$("#vbars").querySelectorAll("span").forEach((s,i)=>{s.style.height=(6+Math.abs(Math.sin(clock/90+i*1.3))*20)+"px"})}
+}
+
+/* decisions + intent */
+function renderDecs(){
+  const el=$("#decs");
+  if(!S.decs.length){el.innerHTML=`<p class="hint">${ui.mode==="seq"?"The sequential pipeline has no decision model: the LLM guesses everything inside one long generation.":"Decisions appear here as System 1 answers them."}</p>`;return}
+  el.innerHTML=S.decs.map(d=>`<div class="dec"><div class="dh"><b>${esc(d.title)}</b><span class="badge">${d.type}</span></div>${d.opts.map((o,i)=>`<div class="opt ${i===d.pick?"pick":""}"><span>${esc(o[0])}</span><span class="bar"><i style="width:${Math.round(o[1]*100)}%"></i></span><span class="pv">${o[1].toFixed(2)}</span></div>`).join("")}${d.note?`<div class="dn">${esc(d.note)}</div>`:""}</div>`).join("");
+}
+function renderIntent(){
+  const txt=JSON.stringify(S.intent,null,2);
+  const keys=S.lastKeys||[];
+  $("#intent").innerHTML=esc(txt).split("\n").map(l=>{const m=l.match(/^ {2}"([^"]+)"/);return m&&keys.includes(m[1])?`<mark>${l}</mark>`:l}).join("\n");
+}
+function logBus(t,b){
+  const li=document.createElement("li");
+  const ts=t<PLAN.R?`${Math.round(t)} ms`:`R+${Math.round(t-PLAN.R)}`;
+  li.innerHTML=`<span class="t">${ts}</span><span class="tp ${b.fam}">${b.tp}</span><span class="m">${esc(b.m)}</span>`;
+  $("#bus").prepend(li);
+}
+
+/* gantt */
+const LANES=["Client","ASR","Speakers","Live polish","System 1","LLM","Agent + tools","Output"];
+const LANE_META={
+  "Client":["Your device","microphone, voice activity","per"],
+  "ASR":["Speech to text","streaming, then a final pass","per"],
+  "Speakers":["Who is speaking","diarization","per"],
+  "Live polish":["Live polish","text cleaned while you talk","s2"],
+  "System 1":["Fast decisions","System 1 decision model","s1"],
+  "LLM":["Writing","cleanup language model","s2"],
+  "Agent + tools":["Thinking and tools","System 2 agent, MCP tools","s2"],
+  "Output":["What you see and hear","text, generated UI, voice","out"]
+};
+const SPEAK_W=28,GAP_W=2;
+function X(t,isEnd){const R=PLAN.R;if(t<R)return SPEAK_W*t/R;if(t===R)return isEnd?SPEAK_W:SPEAK_W+GAP_W;return Math.min(100,SPEAK_W+GAP_W+(100-SPEAK_W-GAP_W)*(t-R)/(PLAN.view-R))}
+function fmtT(t){return t<PLAN.R?`${(t/1000).toFixed(1)} s`:`+${Math.round(t-PLAN.R).toLocaleString()} ms`}
+function fmtD(ms){return ms>=1000?`${(ms/1000).toFixed(1)} s`:`${Math.round(ms)} ms`}
+let spanEls=[],mkEls=[],selected=null,MILES=[];
+function milestones(){
+  const P=PLAN,listen=ui.scen==="listen",m=[{t:0,n:listen?"Meeting starts":"You start talking"}];
+  const fd=P.events.find(e=>e.bus&&e.bus.tp==="s1.decision");
+  if(fd&&fd.t<P.R)m.push({t:fd.t,n:"First decision, while still talking"});
+  m.push({t:P.R,n:listen?"You stop listening":"You let go of the key"});
+  const cmd=ui.scen==="command"||listen;
+  m.push({t:P.R+P.first,n:cmd?"First thing on screen":"Text appears in the app"});
+  if(P.done>P.first)m.push({t:P.R+P.done,n:"Response complete"});
+  if(fd&&fd.t>=P.R)m.splice(m.length-1-(P.done>P.first?1:0),0,{t:fd.t,n:"First decision"});
+  return m.sort((a,b)=>a.t-b.t);
+}
+function buildGantt(){
+  const g=$("#gantt");g.innerHTML="";spanEls=[];mkEls=[];selected=null;
+  const R=PLAN.R;
+  const z=document.createElement("div");z.className="zones";
+  z.innerHTML=`<div class="zone speak" style="left:0;width:${SPEAK_W}%">${ui.scen==="listen"?"During the meeting":"While you talk"} (${(R/1000).toFixed(1)} s, squeezed)</div><div class="zone after" style="left:${SPEAK_W+GAP_W}%;right:0">After you let go (to scale)</div>`;
+  g.appendChild(z);
+  LANES.filter(l=>PLAN.spans.some(s=>s.lane===l)).forEach(l=>{
+    const [nm,ds,fam]=LANE_META[l];
+    const row=document.createElement("div");row.className="lane";
+    row.innerHTML=`<div class="lh"><i style="background:var(--${fam})"></i><span><b>${nm}</b><small>${ds}</small></span></div><div class="track"><div class="speakband" style="width:${SPEAK_W}%"></div></div>`;
+    g.appendChild(row);
+    const tr=row.querySelector(".track");const ends=[];
+    PLAN.spans.filter(s=>s.lane===l).sort((x,y)=>x.a-y.a).forEach(s=>{
+      let r=ends.findIndex(e=>e<=s.a);if(r<0){r=ends.length;ends.push(0)}ends[r]=s.b;
+      const d=document.createElement("button");d.type="button";d.className="sp future "+s.fam;
+      d.style.top=(7+r*28)+"px";const L=X(s.a,false),Rr=X(s.b,true);
+      d.style.left=L+"%";d.style.width=Math.max(0.4,Rr-L)+"%";
+      d.innerHTML=`<span class="fill"></span><span class="tx">${s.label}<span class="d">${fmtD(s.b-s.a)}</span></span>`;
+      d.setAttribute("aria-label",`${nm}: ${s.label}, ${fmtD(s.b-s.a)}`);
+      d.addEventListener("click",()=>selectSpan(s,d));
+      tr.appendChild(d);spanEls.push({s,d});
+    });
+    tr.style.minHeight=(14+Math.max(1,ends.length)*28)+"px";
+  });
+  const ov=document.createElement("div");ov.className="overlay";
+  ov.innerHTML=`<div class="relline" style="left:${SPEAK_W+GAP_W/2}%"></div><div class="now" id="nowline" style="left:0%"><span class="nowlab" id="nowlab">0.0 s</span></div>`;
+  g.appendChild(ov);
+  const ax=document.createElement("div");ax.className="axis";
+  let h=`<span class="tick" style="left:0%">0 s</span><span class="tick" style="left:${SPEAK_W}%">${(R/1000).toFixed(1)} s</span>`;
+  const post=PLAN.view-R,step=post>3000?1000:post>1500?500:post>800?200:100;
+  for(let t=step;t<post;t+=step)h+=`<span class="tick" style="left:${X(R+t)}%">+${t.toLocaleString()} ms</span>`;
+  MILES=milestones();
+  MILES.forEach((m,k)=>{h+=`<span class="mk" data-k="${k}" style="left:${m.t===R?SPEAK_W+GAP_W/2:X(m.t)}%" title="${m.n}">${k+1}</span>`});
+  ax.innerHTML=h;g.appendChild(ax);
+  mkEls=[...ax.querySelectorAll(".mk")];
+  $("#miles").innerHTML=MILES.map((m,k)=>`<li data-k="${k}"><span class="n">${k+1}</span>${m.n}<span class="tm">${m.t<R?fmtT(m.t):m.t===R?"0 ms":fmtT(m.t)}</span></li>`).join("");
+  $("#selbox").className="selbox";$("#selbox").innerHTML="Select a bar to see what that step does, how long it takes and which block on the map runs it.";
+  for(const id in nodeEls)nodeEls[id].classList.remove("sel");
+  requestAnimationFrame(markTight);
+}
+function markTight(){spanEls.forEach(({d})=>{const tx=d.querySelector(".tx");d.classList.toggle("tight",tx.scrollWidth>d.clientWidth-10)})}
+window.addEventListener("resize",()=>{if(PLAN)markTight()});
+function selectSpan(s,d){
+  spanEls.forEach(x=>x.d.classList.remove("selected"));d.classList.add("selected");
+  for(const id in nodeEls)nodeEls[id].classList.toggle("sel",s.nodes.includes(id));
+  const [nm]=LANE_META[s.lane];const blocks=s.nodes.map(n=>NODES[n].nm).join(", ");
+  const box=$("#selbox");box.className="selbox on";
+  box.innerHTML=`<b>${nm}: ${s.label}</b> <span class="ms">${fmtT(s.a)} to ${fmtT(s.b)}, ${fmtD(s.b-s.a)}</span><br>Runs on the <b>${blocks||"client"}</b> block, highlighted on the map.${s.nodes[0]&&INFO[s.nodes[0]]?" "+INFO[s.nodes[0]].rows[0][0]+": "+INFO[s.nodes[0]].rows[0][1]+".":""}`;
+}
+function updateGantt(){
+  spanEls.forEach(({s,d})=>{
+    const st=clock>=s.b?"done":clock>=s.a?"run":"future";
+    d.classList.toggle("future",st==="future");d.classList.toggle("run",st==="run");
+    const u=st==="done"?1:st==="run"?(clock-s.a)/(s.b-s.a):0;
+    d.firstChild.style.width=(u*100)+"%";
+  });
+  const nl=$("#nowline");
+  if(nl){const c=Math.min(clock,PLAN.view);const x=clock<PLAN.R?X(c):clock===PLAN.R?SPEAK_W+GAP_W/2:X(c,false);nl.style.left=x+"%";nl.classList.toggle("flip",x>82);$("#nowlab").textContent=clock>PLAN.view?fmtT(clock):fmtT(c)}
+  mkEls.forEach((m,k)=>m.classList.toggle("hit",clock>=MILES[k].t&&clock>0));
+  $("#miles").querySelectorAll("li").forEach((li,k)=>li.classList.toggle("hit",clock>=MILES[k].t&&clock>0));
+  narrate();
+}
+let narrSig="";
+function narrate(){
+  const el=$("#narr"),R=PLAN.R,spec=ui.mode==="spec",listen=ui.scen==="listen";
+  let html;
+  if(clock<=0){html=`Press <b>Play</b>. The left side fills while ${listen?"people talk":"you talk"}; the right side shows what happens after you let go.`}
+  else if(clock>=PLAN.end){
+    const P=PLAN,two=P.done>P.first;
+    html=`<span class="when">done</span><span>First response <b>${P.first.toLocaleString()} ms</b> after you let go${two?`, complete at <b>${P.done.toLocaleString()} ms</b>`:""}. ${spec?"Switch to v1 sequential to compare.":"Switch to v3 speculative to compare."}</span>`;
+  }else{
+    const act=PLAN.spans.filter(s=>clock>=s.a&&clock<s.b);
+    const items=(clock<R?act.filter(s=>s.b-s.a<1200):act.filter(s=>s.lane!=="Client")).sort((a,b)=>b.a-a.a).slice(0,2);
+    let lead;
+    if(clock<R)lead=spec?(listen?"People are talking. Speech becomes text and each voice gets a name as they go.":"You are talking. Speech becomes text as you go, and the system starts preparing."):(listen?"The meeting is being recorded. The v1 pipeline does nothing else until you stop.":"You are talking. The v1 pipeline only records; nothing happens until you let go.");
+    else lead=items.length?"":"Waiting for the next step.";
+    html=`<span class="when">${fmtT(clock)}</span>${lead?`<span>${lead}</span>`:""}${items.map(s=>{const [nm,,fam]=LANE_META[s.lane];return `<span class="it"><i style="background:var(--${fam})"></i><span><b>${nm}:</b> ${s.label}</span><span class="ms">${fmtD(s.b-s.a)}</span></span>`}).join("")}`;
+  }
+  if(html!==narrSig){narrSig=html;el.innerHTML=html}
+}
+function renderRace(){
+  const key=ui.scen,a=build(key,"spec"),b=build(key,"seq");
+  const max=Math.max(a.done,b.done,b.first,800)*1.06,pct=v=>v/max*100;
+  const cmd=key==="command"||key==="listen";
+  const lab=P=>P.done>P.first?`${P.first.toLocaleString()} ms first, ${P.done.toLocaleString()} ms complete`:`${P.first.toLocaleString()} ms`;
+  const row=(P,cls,name,cur)=>`<div class="rrow ${cur?"cur":""}"><span class="rl">${name}${cur?" <em>(playing)</em>":""}</span><div class="rbar"><div class="f ${cls}" style="left:0;width:${pct(P.first)}%"></div>${P.done>P.first?`<div class="f2 ${cls}" style="left:${pct(P.first)}%;width:${pct(P.done-P.first)}%"></div>`:""}<div class="bud" style="left:${pct(700)}%" title="700 ms target"></div></div><span class="rnum">${lab(P)}</span></div>`;
+  const ratio=(b.first/a.first).toFixed(1);
+  $("#race").innerHTML=`<h3>Same ${key==="listen"?"meeting":"sentence"}, two designs</h3><p class="sub">Time from letting go of the key to the first response${cmd?" (solid) and the complete response (outlined)":""}. The red line is the 700 ms target.</p>
+   ${row(a,"v3","v3 speculative",ui.mode==="spec")}
+   ${row(b,"v1","v1 sequential",ui.mode==="seq")}
+   <p class="verdict">v3 responds <b>${(b.first-a.first).toLocaleString()} ms sooner</b>, about <b>${ratio}× faster</b> to the ${cmd?"first thing on screen":"inserted text"}.</p>`;
+}
+
+
+/* ---------- drawer ---------- */
+const drawer=$("#drawer");
+function fitDrawer(){const h=drawer.offsetHeight;document.body.style.paddingBottom=(h+20)+"px";document.documentElement.style.setProperty("--drawer-h",h+"px")}
+if(matchMedia("(max-width: 640px)").matches){drawer.classList.add("collapsed");$("#dToggle").setAttribute("aria-expanded","false");$("#dToggle").textContent="Show controls"}
+new ResizeObserver(fitDrawer).observe(drawer);fitDrawer();
+$("#dToggle").addEventListener("click",()=>{const c=drawer.classList.toggle("collapsed");$("#dToggle").setAttribute("aria-expanded",String(!c));$("#dToggle").textContent=c?"Show controls":"Hide controls"});
+document.addEventListener("keydown",e=>{
+  const tg=e.target.tagName;if(["INPUT","SELECT","TEXTAREA","BUTTON"].includes(tg)||e.metaKey||e.ctrlKey||e.altKey)return;
+  if(e.key===" "){e.preventDefault();$("#playBtn").click()}
+  else if(e.key==="ArrowRight"){e.preventDefault();$("#stepBtn").click()}
+  else if(e.key==="r"||e.key==="R"){$("#resetBtn").click()}
+});
+function drawerStatus(){}
+function renderTally(){
+  const a=build(ui.scen,"spec"),b=build(ui.scen,"seq");
+  let place="";
+  if(typeof summarize==="function"){const z=summarize(ui.scen);if(!z.isAllSrv)place=`<span><span class="lab">${z.cls==="phone"?"Phone":"Laptop"} layout</span> <b>${z.cur.first} ms</b></span>`}
+  $("#tally").innerHTML=`<span><span class="lab">First response: v3</span> <b>${a.first.toLocaleString()} ms</b></span><span><span class="lab">v1</span> <b>${b.first.toLocaleString()} ms</b></span>${place}`;
+}
+
+/* ---------- placement ---------- */
+const COMP=[
+ {k:"capture",short:"Capture, VAD, turn detection",nm:"Capture and turn detection",fam:"per",lock:"dev",why:"Microphone, Silero VAD and Smart Turn (8 MB) always run locally."},
+ {k:"asrS",nm:"Streaming speech to text",fam:"per",m:{srv:"Nemotron 3.5 streaming 0.6B",laptop:"Parakeet TDT 0.6B int8; IndicConformer for Indic",phone:"Parakeet TDT 0.6B int8 on the CPU"}},
+ {k:"asrF",nm:"Final-pass speech to text",fam:"per",m:{srv:"Granite Speech 4.1 2B or Qwen3-ASR-1.7B",laptop:"Granite Speech 4.1 2B via mlx-audio or llama.cpp",phone:"Skipped; the phone keeps the streaming result"},note:{phone:"No final pass on a phone: expect a slightly higher error rate."}},
+ {k:"diar",nm:"Who is speaking",fam:"per",m:{srv:"Nemotron 3 Diarization 100M",laptop:"pyannote community-1 (Nemotron needs NVIDIA on Linux)",phone:"Own-voice check only (speaker embedding)"},blockPhone:"listen",blockWhy:"A meeting with several speakers needs a laptop or the server."},
+ {k:"polish",nm:"Live polish",fam:"s2",m:{srv:"Rules + server cleanup model",laptop:"Rules + Qwen3.5-2B Q4",phone:"Rules + Qwen3.5-0.8B 4-bit"},note:{phone:"Phone polish rewrites less aggressively; the final pass still runs after release."}},
+ {k:"s1",nm:"Fast decisions (System 1)",fam:"s1",m:{srv:"Clef-Flash 9B",laptop:"Strands Decider 2B",phone:"GLiNER2.5-Decide 340M"},note:{laptop:"Decider 2B is less accurate than Clef-Flash on hard decisions; send low-confidence ones to the server.",phone:"The smallest decider: keep confidence thresholds conservative."}},
+ {k:"cleanup",nm:"Writing (cleanup model)",fam:"s2",scen:["dictate","codeswitch"],m:{srv:"Qwen3.5-4B + LoRA",laptop:"Qwen3.5-2B + LoRA, Q4",phone:"Qwen3.5-0.8B fine-tune, 4-bit"},note:{phone:"The 0.8B model is weaker on long or code-switched dictation: draft, verify, escalate."}},
+ {k:"script",short:"Script layer (11M, tiny)",nm:"Script layer",fam:"s1",scen:["dictate","codeswitch"],lock:"dev",why:"IndicXlit is about 11M parameters, so it always runs locally."},
+ {k:"tts",nm:"Voice reply (TTS)",fam:"out",scen:["command","listen"],m:{srv:"Kokoro, OmniVoice, Indic Parler-TTS",laptop:"Kokoro and OmniVoice",phone:"Kokoro or Kyutai pocket-tts"},note:{phone:"English voices on the phone; Indic voices stay on the server."}},
+ {k:"render",short:"UI rendering",nm:"UI rendering",fam:"out",scen:["command","listen"],lock:"dev",why:"A2UI cards render natively in the app."},
+ {k:"memory",short:"Dictionary and corrections (private)",nm:"Dictionary and corrections",fam:"out",lock:"dev",why:"Private by design; never leaves the device."},
+ {k:"agent",short:"Reasoning agent: needs ~27 GB GPU",nm:"Reasoning agent (System 2)",fam:"s2",scen:["command","listen"],lock:"srv",why:"Qwen3.8-27B needs about 27 GB of GPU memory even at FP8."},
+ {k:"tools",short:"Tools: run where the data lives",nm:"Tools (MCP)",fam:"s2",scen:["command"],lock:"srv",why:"Runs where the data lives: calendar and mail APIs."},
+ {k:"train",short:"Training: a rented GPU now and then",nm:"Training and tuning",fam:"s2",lock:"srv",why:"LoRA, decider and ASR fine-tunes run on a rented GPU now and then."}
+];
+const PL={cls:"laptop",net:40,loc:{asrS:"srv",asrF:"srv",diar:"srv",polish:"srv",s1:"srv",cleanup:"srv",tts:"srv"}};
+const used=(c,sc)=>!c.scen||c.scen.includes(sc);
+const locOf=(k)=>{const c=COMP.find(x=>x.k===k);return c.lock?c.lock:PL.loc[k]};
+function canMove(c,cls,sc){if(c.lock)return false;if(cls==="phone"&&c.blockPhone===sc)return false;return true}
+function preset(v){
+  if(v==="server"){for(const k in PL.loc)PL.loc[k]="srv"}
+  else{PL.cls=v;COMP.forEach(c=>{if(!c.lock)PL.loc[c.k]=canMove(c,v,ui.scen)?"dev":"srv"})}
+  renderPlacement();
+}
+$("#placeSeg").addEventListener("click",e=>{const b=e.target.closest("button");if(!b)return;lastNote="";preset(b.dataset.v)});
+$("#netSel").addEventListener("change",e=>{PL.net=+e.target.value;renderPlacement()});
+
+/* timing model, ms (design estimates; measured figures where the doc has them) */
+const TM={
+ asrF:{srv:{dictate:120,codeswitch:140,command:120,listen:150},laptop:220,phone:0},
+ diarF:{srv:150,laptop:220,phone:220},
+ s1:{srv:45,laptop:153,phone:170}, ver:{srv:40,laptop:120,phone:150},
+ cleanup:{srv:{dictate:175,codeswitch:185},laptop:200,phone:380},
+ tts:{srv:120,laptop:160,phone:260}, agent:480, render:20, script:8
+};
+function dur(key,where,sc,cls){
+  const t=TM[key];if(typeof t==="number")return t;
+  if(where==="srv"){const v=t.srv;return typeof v==="object"?(v[sc]||v.dictate):v}
+  return t[cls];
+}
+function simulate(sc,loc,cls,net){
+  const L=k=>k==="dev"?"dev":k==="srv"?"srv":(loc[k]||locOf(k));
+  const N={};
+  const node=(id,where,d,preds)=>{let st=0;preds.forEach(p=>{st=Math.max(st,N[p].f+(N[p].w===where?0:net))});N[id]={w:where,f:st+d}};
+  node("rel","dev",0,[]);
+  node("asrF",L("asrF"),dur("asrF",L("asrF"),sc,cls),["rel"]);
+  const pre=["asrF"];
+  if(sc==="listen"){node("diarF",L("diar"),dur("diarF",L("diar"),sc,cls),["rel"]);pre.push("diarF")}
+  node("s1",L("s1"),dur("s1",L("s1"),sc,cls),pre);
+  if(sc==="dictate"||sc==="codeswitch"){
+    node("cl",L("cleanup"),dur("cleanup",L("cleanup"),sc,cls),pre);
+    node("ver",L("s1"),dur("ver",L("s1"),sc,cls),["s1","cl"]);
+    node("scr","dev",TM.script,["ver"]);
+    return{first:Math.round(N.scr.f),done:Math.round(N.scr.f)};
+  }
+  node("skel","dev",TM.render,["s1"]);
+  node("ag","srv",TM.agent,["s1"]);
+  node("fill","dev",TM.render,["ag"]);
+  node("tts",L("tts"),dur("tts",L("tts"),sc,cls),["s1"]);
+  node("play","dev",0,["tts"]);
+  return{first:Math.round(N.skel.f),done:Math.round(N.fill.f),voice:Math.round(N.play.f)};
+}
+const GPU={asrS:80,asrF:null,diar:{d:40,listen:190},s1:{dictate:125,codeswitch:125,command:130,listen:270},cleanup:{dictate:205,codeswitch:215},tts:{command:400,listen:600},agent:480};
+function gpuMs(sc,loc){
+  let g=0;const on=k=>(loc[k]||locOf(k))==="srv";
+  if(on("asrS"))g+=GPU.asrS;
+  if(on("asrF"))g+=dur("asrF","srv",sc);
+  if(on("diar"))g+=sc==="listen"?GPU.diar.listen:GPU.diar.d;
+  if(on("s1"))g+=GPU.s1[sc];
+  if(on("polish"))g+={dictate:150,codeswitch:150,command:60,listen:220}[sc];
+  if((sc==="dictate"||sc==="codeswitch")&&on("cleanup"))g+=GPU.cleanup[sc];
+  if((sc==="command"||sc==="listen")&&on("tts"))g+=GPU.tts[sc];
+  if(sc==="command"||sc==="listen")g+=GPU.agent;
+  return g;
+}
+const VRAM={asrS:{d:1.2,codeswitch:2.4},asrF:{d:4,codeswitch:4},diar:.4,polish:0,s1:9,cleanup:4,tts:1.5,agent:27};
+const RAM={polish:{laptop:.1,phone:.6},capture:.05,asrS:{laptop:.5,phone:.5},asrF:{laptop:1.5,phone:0},diar:{laptop:.2,phone:.05},s1:{laptop:1.5,phone:.4},cleanup:{laptop:1.5,phone:.6},tts:{laptop:.5,phone:.3},script:.05,memory:.05,render:.05};
+function memory(sc,loc,cls){
+  let srv=0,dev=0;
+  COMP.forEach(c=>{
+    if(!used(c,sc)||c.k==="train"||c.k==="tools")return;
+    const w=loc[c.k]||locOf(c.k);
+    if(w==="srv"&&VRAM[c.k]!=null){const v=VRAM[c.k];srv+=typeof v==="number"?v:(v[sc]||v.d)}
+    if(w==="dev"&&RAM[c.k]!=null){const v=RAM[c.k];dev+=typeof v==="number"?v:v[cls]}
+  });
+  return{srv:+(srv*1.4).toFixed(1),dev:+dev.toFixed(1)};
+}
+function serverRec(gb,sc){
+  if(gb<=0.1)return"No inference GPU: only sync, accounts and occasional training";
+  if(gb<=14)return"1× RTX 4060 Ti 16 GB, or a shared L4 24 GB";
+  if(gb<=22)return"1× L4 24 GB or RTX 4090 24 GB";
+  if(gb<=30)return"1× RTX 5090 32 GB";
+  if(gb<=46)return"1× L40S 48 GB";
+  return"Fast path on 1× L4 or L40S, plus 1× L40S 48 GB (FP8) or H100 80 GB for the agent";
+}
+function clientRec(gb,cls,allSrv){
+  if(allSrv)return cls==="phone"?"Any phone that can stream audio (the app is a thin client)":"Any laptop or browser that can stream audio";
+  if(cls==="phone"){
+    if(gb<=1)return"Mid-range phone with 6 GB RAM, CPU only";
+    if(gb<=2.2)return"Recent flagship phone with 8 GB+ RAM and an NPU";
+    return"Too heavy for a phone: move a card back to the server";
+  }
+  if(gb<=1)return"Any recent laptop with 8 GB RAM, CPU only";
+  if(gb<=6)return"Apple Silicon M1+ with 16 GB, or a PC with an 8 GB RTX 3060/4060";
+  return"Apple Silicon M2 Pro+ with 16–32 GB, or an RTX 4060 Ti 16 GB";
+}
+const SCN={dictate:"Dictate",codeswitch:"Nepali–English dictate",command:"Command",listen:"Meeting notes"};
+function summarize(sc){
+  const cls=PL.cls,loc={...PL.loc};
+  if(cls==="phone"&&sc==="listen"&&loc.diar==="dev")loc.diar="srv";
+  const allSrv={};for(const k in PL.loc)allSrv[k]="srv";
+  const cur=simulate(sc,loc,cls,PL.net),base=simulate(sc,allSrv,cls,PL.net);
+  const g=gpuMs(sc,loc),gb=gpuMs(sc,allSrv),mem=memory(sc,loc,cls);
+  const usedSrv=COMP.filter(c=>used(c,sc)&&!c.lock&&loc[c.k]==="srv");
+  const isAllSrv=COMP.filter(c=>used(c,sc)&&!c.lock).every(c=>loc[c.k]==="srv");
+  const needsSrv=sc==="command"||sc==="listen"||usedSrv.length>0;
+  const audioOut=["asrS","asrF","diar"].some(k=>loc[k]==="srv");
+  return{cur,base,g,gb,mem,needsSrv,audioOut,isAllSrv,cls,loc};
+}
+const FLOW={dictate:["capture","asrS","asrF","diar","polish","s1","cleanup","script","screen"],codeswitch:["capture","asrS","asrF","diar","polish","s1","cleanup","script","screen"],command:["capture","asrS","asrF","diar","polish","s1","agent","tools","tts","screen"],listen:["capture","asrS","asrF","diar","polish","s1","agent","tts","screen"]};
+const TILE={polish:"Live polish",capture:"Mic and turn detection",asrS:"Live speech to text",asrF:"Final pass",diar:"Who is speaking",s1:"Fast decisions",cleanup:"Writing",script:"Script",agent:"Reasoning agent",tools:"Tools",tts:"Voice reply"};
+const LOCKMDL={capture:"Silero VAD, Smart Turn",script:"IndicXlit, 11M",agent:"Qwen3.8-27B",tools:"Calendar, mail APIs"};
+let lastNote="";
+function syncSegs(){
+  const all=COMP.filter(c=>!c.lock).every(c=>PL.loc[c.k]==="srv");
+  $("#placeSeg").querySelectorAll("button").forEach(x=>x.setAttribute("aria-pressed",String(x.dataset.v===(all?"server":PL.cls))));
+  $("#clsSeg").querySelectorAll("button").forEach(x=>x.setAttribute("aria-pressed",String(x.dataset.v===PL.cls)));
+}
+function moveTo(k,where){
+  const c=COMP.find(x=>x.k===k),sc=ui.scen,cls=PL.cls,dn=cls==="phone"?"phone":"laptop";
+  if(c.lock){lastNote=`<b>${TILE[k]||c.nm}</b> can't move. ${c.why}`;renderPlacement();return}
+  if(where==="dev"&&!canMove(c,cls,sc)){lastNote=`<b>${TILE[k]}</b> can't run on a phone here. ${c.blockWhy}`;renderPlacement();return}
+  PL.loc[k]=where;
+  const tr=c.note&&c.note[cls]&&where==="dev"?` Trade-off: ${c.note[cls]}`:"";
+  lastNote=where==="dev"?`<b>${TILE[k]}</b> now runs on your ${dn} with ${c.m[cls]}.${tr}`:`<b>${TILE[k]}</b> now runs on the server with ${c.m.srv}.`;
+  renderPlacement(k);
+}
+function renderPlacement(movedKey){
+  syncSegs();
+  const sc=ui.scen,cls=PL.cls,S0=summarize(sc),dn=cls==="phone"?"phone":"laptop",cmd=sc==="command"||sc==="listen";
+  const flow=FLOW[sc];
+  const where=k=>k==="screen"?"dev":(S0.loc[k]||locOf(k));
+  const lanes=$("#lanes");
+  lanes.style.gridTemplateColumns=`118px repeat(${flow.length},minmax(104px,1fr))`;
+  const tile=k=>{
+    if(k==="screen")return `<div class="tile out locked" title="Rendering happens in the app"><b>${sc==="dictate"||sc==="codeswitch"?"Text in your app":"Card and voice"}</b><span class="mdl">${sc==="dictate"||sc==="codeswitch"?"Pasted at the cursor":"A2UI card renders natively"}</span><span class="tact">Always on device</span></div>`;
+    const c=COMP.find(x=>x.k===k),w=where(k),mv=canMove(c,cls,sc);
+    const mdl=c.lock?LOCKMDL[k]:(w==="dev"?c.m[cls]:c.m.srv);
+    let act,cl="tile "+c.fam;
+    if(c.lock){act=c.lock==="dev"?"Always on device":"Server only";cl+=" locked"}
+    else if(!mv){act="Server only on a phone";cl+=" blocked"}
+    else act=w==="dev"?"Move to server":"Move to "+dn;
+    if(k===movedKey)cl+=" moved";
+    return `<button type="button" class="${cl}" data-k="${k}" title="${c.lock?c.why:mv?"Click to move":c.blockWhy}"><b>${TILE[k]}</b><span class="mdl">${mdl}</span><span class="tact">${act}</span></button>`;
+  };
+  const slot=(k,row)=>{
+    if(k==="screen")return "";
+    const c=COMP.find(x=>x.k===k);if(c.lock)return "";
+    if(row==="dev"&&!canMove(c,cls,sc))return "";
+    return `<button type="button" class="slot" data-k="${k}" data-to="${row}" aria-label="Move ${TILE[k]} to the ${row==="dev"?dn:"server"}"><span>Move here</span></button>`;
+  };
+  let h=`<div class="lanelab dev">Your ${dn}<small>${S0.mem.dev} GB of models</small></div>`;
+  flow.forEach(k=>{h+=`<div class="cell devrow" data-k="${k}">${where(k)==="dev"?tile(k):slot(k,"dev")}</div>`});
+  h+=`<div class="lanelab srv">Server<small>${S0.mem.srv} GB of GPU memory</small></div>`;
+  flow.forEach(k=>{h+=`<div class="cell srvrow" data-k="${k}">${where(k)==="srv"?tile(k):slot(k,"srv")}</div>`});
+  h+=`<svg class="lanepath" aria-hidden="true"><path id="lpath"/></svg>`;
+  lanes.innerHTML=h;
+  lanes.querySelectorAll(".tile[data-k]").forEach(b=>b.addEventListener("click",()=>{const k=b.dataset.k,w=where(k);moveTo(k,w==="dev"?"srv":"dev")}));
+  lanes.querySelectorAll(".slot").forEach(b=>b.addEventListener("click",()=>moveTo(b.dataset.k,b.dataset.to)));
+  requestAnimationFrame(()=>drawLanePath(flow,where));
+  $("#pnote").innerHTML=lastNote||`Start with <b>Move all that fits to the device</b>, then send single parts back to the server to see what each one costs. Not shown: your dictionary and corrections always stay on the device; training uses a rented GPU now and then.`;
+  // results
+  const {cur,base,g,gb,mem}=S0,d=cur.first-base.first;
+  const red=gb?Math.round((1-g/gb)*100):0;
+  const speedTag=S0.isAllSrv?`<span class="tag neutral">Baseline</span>`:d<0?`<span class="tag good">${-d} ms faster</span>`:d>0?`<span class="tag warn">${d} ms slower</span>`:`<span class="tag neutral">Same speed</span>`;
+  const gpuTag=g===0?`<span class="tag good">No GPU needed</span>`:red>0?`<span class="tag good">${(gb/g).toFixed(1)}× more users per GPU</span>`:`<span class="tag neutral">Baseline</span>`;
+  const offline=!S0.needsSrv;
+  const notes=COMP.filter(c=>used(c,sc)&&!c.lock&&S0.loc[c.k]==="dev"&&c.note&&c.note[cls]).map(c=>`<li><b>${TILE[c.k]}:</b> ${c.note[cls]}</li>`).join("");
+  $("#placeRes").innerHTML=`<div class="metrics">
+    <div class="metric"><small>${cmd?"First thing on screen":"Text appears in the app"}</small><b>${cur.first} ms</b><span class="cmpline">Everything on server: ${base.first} ms${cmd?`<br>Complete: ${cur.done} ms (server ${base.done} ms)`:""}</span>${speedTag}</div>
+    <div class="metric"><small>Server GPU work per request</small><b>${g} ms</b><span class="cmpline">Everything on server: ${gb} ms</span>${gpuTag}</div>
+    <div class="metric"><small>Works offline</small><b>${offline?"Yes":"No"}</b><span class="cmpline">${offline?"Every part runs on the "+dn:cmd?"The reasoning agent lives on the server":"Some parts still run on the server"}</span>${offline?`<span class="tag good">Offline ready</span>`:""}</div>
+    <div class="metric"><small>Your audio</small><b>${S0.audioOut?"Sent to server":"Stays on device"}</b><span class="cmpline">${S0.audioOut?"Speech or speaker parts run on the server":"Only text or intents leave the device"}</span>${S0.audioOut?"":`<span class="tag good">Private</span>`}</div>
+  </div>
+  <div class="hwrow">
+    <div class="hwbox dev"><small>Minimum ${dn}</small><b>${clientRec(mem.dev,cls,S0.isAllSrv)}</b><span>${mem.dev} GB of models on the device</span></div>
+    <div class="hwbox srv"><small>Minimum server</small><b>${serverRec(mem.srv,sc)}</b><span>${mem.srv} GB of GPU memory including cache headroom</span></div>
+  </div>
+  ${notes?`<div class="trade"><b>What you trade for this layout</b><ul>${notes}</ul></div>`:""}
+  <details class="allsc"><summary>Same layout across all four scenarios</summary>
+  <table class="allt"><thead><tr><th>Scenario</th><th>First response</th><th>Server GPU per request</th><th>Minimum ${dn}</th><th>Minimum server</th></tr></thead><tbody>
+  ${Object.keys(SCN).map(k=>{const z=summarize(k);return `<tr><td>${SCN[k]}</td><td>${z.cur.first} ms${z.cur.done>z.cur.first?`, complete ${z.cur.done}`:""}</td><td>${z.g} ms</td><td>${clientRec(z.mem.dev,cls,z.isAllSrv)}</td><td>${serverRec(z.mem.srv,k)}</td></tr>`}).join("")}
+  </tbody></table></details>
+  <p class="hint" style="margin:10px 0 0">Times include every network trip at the latency you picked; the timeline above assumes the server is next door. Figures are design estimates anchored on measured numbers: Clef-Flash 38.8 ms, Decider 2B 153 ms on an M3 Pro, Qwen3.5-2B Q4 cleanup 145 ms.</p>`;
+  // map badges
+  const devNodes={polish:S0.loc.polish==="dev",client:true,app:true,genui:true,asr:S0.loc.asrS==="dev",diar:S0.loc.diar==="dev",s1:S0.loc.s1==="dev",verify:S0.loc.s1==="dev",cleanup:S0.loc.cleanup==="dev",tts:S0.loc.tts==="dev",agent:false,tools:false};
+  for(const id in nodeEls)nodeEls[id].classList.toggle("ondev",!!devNodes[id]);
+  const ph=cls==="phone";
+  const devSub={polish:ph?"0.8B on the phone":"2B on the laptop",asr:ph?"Parakeet int8 on CPU":"Parakeet int8, Granite",diar:ph?"own-voice check only":"pyannote community-1",s1:ph?"GLiNER2.5-Decide":"Decider 2B",verify:ph?"GLiNER checks, IndicXlit":"Decider checks, IndicXlit",cleanup:ph?"Qwen3.5-0.8B 4-bit":"Qwen3.5-2B Q4",tts:ph?"Kokoro, pocket-tts":"Kokoro, OmniVoice"};
+  for(const id in devSub){const t=nodeEls[id].querySelector(".sub");t.textContent=devNodes[id]?devSub[id]:NODES[id].sub}
+  if(typeof renderTally==="function"&&$("#tally"))renderTally();
+}
+function drawLanePath(flow,where){
+  const lanes=$("#lanes");if(!lanes)return;
+  lanes.querySelectorAll(".hop").forEach(e=>e.remove());
+  const box=lanes.getBoundingClientRect(),pts=[];
+  flow.forEach(k=>{const t=lanes.querySelector(`.cell.${where(k)==="dev"?"devrow":"srvrow"}[data-k="${k}"] .tile`);if(!t)return;const r=t.getBoundingClientRect();pts.push({x:r.left-box.left+r.width/2,y:r.top-box.top+r.height/2,w:where(k)})});
+  let d="";pts.forEach((p,i)=>{d+=(i?"L":"M")+p.x.toFixed(1)+" "+p.y.toFixed(1)+" "});
+  const path=$("#lpath");if(path)path.setAttribute("d",d);
+  for(let i=1;i<pts.length;i++){if(pts[i].w!==pts[i-1].w){const b=document.createElement("span");b.className="hop";b.textContent=`+${PL.net} ms`;b.style.left=((pts[i].x+pts[i-1].x)/2)+"px";b.style.top=((pts[i].y+pts[i-1].y)/2)+"px";lanes.appendChild(b)}}
+}
+window.addEventListener("resize",()=>{if(PLAN&&$("#lanes"))renderPlacement()});
+$("#clsSeg").addEventListener("click",e=>{const b=e.target.closest("button");if(!b)return;PL.cls=b.dataset.v;lastNote="";renderPlacement()});
+$("#allSrvBtn").addEventListener("click",()=>{lastNote="Everything moved to the server: the device only captures audio and shows results.";preset("server")});
+$("#allDevBtn").addEventListener("click",()=>{lastNote=`Everything that fits now runs on your ${PL.cls==="phone"?"phone":"laptop"}. Locked parts stay where they must.`;preset(PL.cls)});
+window.__summ=()=>{const out={};["server","laptop","phone"].forEach(v=>{preset(v);out[v]={};Object.keys(SCN).forEach(k=>{const z=summarize(k);out[v][k]={first:z.cur.first,done:z.cur.done,gpu:z.g,dev:z.mem.dev,srv:z.mem.srv,client:clientRec(z.mem.dev,PL.cls,z.isAllSrv),server:serverRec(z.mem.srv,k)}})});preset("server");return out};
+
+/* ---------- watch-it view ---------- */
+const EDIT_STYLE={Removed:["out","−"],Corrected:["s1","↺"],Formatted:["per","#"],Recognised:["s2","@"],Ignored:["muted","×"],Punctuated:["per","?"],Checked:["per","✓"],Inserted:["out","↵"],Suggested:["out","→"],Detected:["per","◎"],Styled:["s1","Aa"],Understood:["s2","≈"],Decided:["s1","◆"],Speaker:["per","●"],Found:["s2","⌕"],Prepared:["s1","▢"],Shown:["out","▣"],Spoke:["out","♪"],Done:["per","✓"],Action:["s1","☐"],Reassigned:["s1","⇄"],Waiting:["muted","…"]};
+function addEdit(k,d){S.edits.unshift({k,d,t:clock});renderEdits()}
+function fmtWhen(t){return t<PLAN.R?(t/1000).toFixed(1)+" s":"+"+Math.round(t-PLAN.R)+" ms"}
+function renderEdits(){
+  const el=$("#edits");if(!el)return;
+  if(!S.edits.length){el.innerHTML=`<li class="eempty">${clock>0?(ui.mode==="seq"?"Nothing yet: the old pipeline waits for you to let go.":"Listening… fixes appear here as soon as words are stable."):"Each fix will appear here the moment it happens: fillers removed, corrections, names, speakers, actions."}</li>`;return}
+  el.innerHTML=S.edits.map((e,i)=>{const st=EDIT_STYLE[e.k]||["muted","•"];return `<li class="ecard ${st[0]}${i===0?" fresh":""}"><span class="eg">${st[1]}</span><span class="eb"><b>${e.k}</b> ${esc(e.d)}</span><span class="et">${fmtWhen(e.t)}</span></li>`}).join("");
+}
+let saySig="";
+function renderSay(){
+  const el=$("#say");if(!el)return;
+  const sc=SCEN[ui.scen],k=S.partial,sig=JSON.stringify([ui.scen,ui.mode,k,S.final,S.spk,S.ignored,S.speaking,S.latFixed]);
+  if(sig===saySig)return;saySig=sig;
+  const FILL=new Set(["so","um","umm","uh"]);
+  const av=(n,cls)=>`<span class="av ${cls}">${n[0]}</span>`;
+  if(!k){el.innerHTML=`<p class="sayempty">${S.speaking?(ui.mode==="seq"?"Recording… the old pipeline shows nothing until you let go.":"Listening…"):"Press Play. Raw speech appears here, word by word."}</p>`;return}
+  if(ui.scen==="listen"){
+    let wi=0,out="";
+    sc.segs.forEach((sg,j)=>{const ws=sg.text.split(" ");const n=Math.max(0,Math.min(ws.length,k-wi));wi+=ws.length;if(n>0){const nm=S.spk[j]?sg.spk:"Speaker ?";const cls=S.spk[j]?"spk-"+sg.spk:"spk-unk";out+=`<div class="sayrow">${av(nm,S.spk[j]?"a-"+sg.spk:"a-unk")}<div><div class="who ${cls}">${nm}</div><span class="raw">${esc(ws.slice(0,n).join(" "))}</span></div></div>`}});
+    el.innerHTML=out;return;
+  }
+  const ws=(ui.mode==="seq"&&ui.scen==="codeswitch"&&S.v1words)?"umm boss lie bhannu parcha key report no wait report bholi samma ready huncha".split(" "):sc.words;
+  const words=ws.slice(0,k).map((w,i)=>{let c="w";if(!S.final&&i>=k-2)c+=" unstable";if(ui.mode==="spec"&&(FILL.has(w)&&i<3||((ui.scen==="dictate"&&(i===9||i===10))||(ui.scen==="codeswitch"&&(i===7||i===8)))))c+=" flag";if(ui.mode==="spec"&&sc.lattice&&sc.lattice.includes(i))c+=S.latFixed?" fixed":" lat";return `<span class="${c}">${esc(w)}</span>`}).join(" ");
+  let h=`<div class="sayrow">${av("You","a-You")}<div><div class="who spk-You">You${ui.mode==="spec"?" (enrolled voice)":""}</div><span class="raw">${words}</span></div></div>`;
+  if(ui.scen==="dictate"&&S.ignored&&ui.mode==="spec")h+=`<div class="sayrow ignored">${av("C","a-unk")}<div><div class="who spk-unk">Colleague nearby, not you</div><span class="raw">lunch is here</span> <span class="igtag">ignored</span></div></div>`;
+  el.innerHTML=h+`<p class="saykey"><span class="w unstable">grey</span> still being heard · <span class="w flag">underlined</span> will be fixed · <span class="w fixed">tinted</span> recognised</p>`;
+}
+let curTab="watch";
+function showTab(id){
+  curTab=id;const pair=$("#pairChk").checked&&(id==="watch"||id==="how");
+  const vis=t=>t===id||(pair&&(t==="watch"||t==="how"));
+  document.querySelectorAll(".tabs [role=tab]").forEach(b=>b.setAttribute("aria-selected",String(vis(b.dataset.tab))));
+  document.querySelectorAll(".tabpanel").forEach(p=>p.hidden=!vis(p.id.slice(4)));
+  if(pair&&id==="how")requestAnimationFrame(()=>$("#tab-how").scrollIntoView({behavior:reduce?"auto":"smooth",block:"start"}));
+  if(pair&&id==="watch"&&window.scrollY>0)requestAnimationFrame(()=>$("#tab-watch").scrollIntoView({behavior:reduce?"auto":"smooth",block:"start"}));
+  if(pair){requestAnimationFrame(()=>{markTight();updateGantt()})}
+  if(id==="how"){requestAnimationFrame(()=>{markTight();updateGantt()})}
+  if(id==="device"&&typeof renderPlacement==="function")requestAnimationFrame(()=>renderPlacement());
+}
+document.querySelector(".tabs").addEventListener("click",e=>{const b=e.target.closest("[role=tab]");if(b){showTab(b.dataset.tab)}});
+$("#pairChk").addEventListener("change",()=>showTab(curTab==="how"?"how":curTab));
+(function(){
+  const lg=$("#mapLegend"),hd=$("#mlHandle"),tg=$("#mlToggle"),wrap=lg.parentElement;
+  tg.addEventListener("click",e=>{e.stopPropagation();const m=lg.classList.toggle("min");tg.textContent=m?"Expand":"Minimise";tg.setAttribute("aria-expanded",String(!m))});
+  let sx,sy,ox,oy,drag=false;
+  hd.addEventListener("pointerdown",e=>{if(e.target===tg||matchMedia("(max-width: 700px)").matches)return;drag=true;hd.setPointerCapture(e.pointerId);sx=e.clientX;sy=e.clientY;ox=lg.offsetLeft;oy=lg.offsetTop});
+  hd.addEventListener("pointermove",e=>{if(!drag)return;const W=wrap.clientWidth-lg.offsetWidth,H=wrap.clientHeight-lg.offsetHeight;lg.style.left=Math.max(0,Math.min(W,ox+e.clientX-sx))+"px";lg.style.top=Math.max(0,Math.min(H,oy+e.clientY-sy))+"px"});
+  hd.addEventListener("pointerup",()=>{drag=false});
+  hd.addEventListener("keydown",e=>{});
+})();
+$("#goBuild").addEventListener("click",()=>{showTab("build");$("#buildguide").scrollIntoView({behavior:reduce?"auto":"smooth"})});
+document.addEventListener("click",e=>{
+  const c=e.target.closest(".buildguide .copy");
+  if(c){const code=c.parentElement.querySelector("pre").textContent;(navigator.clipboard?navigator.clipboard.writeText(code):Promise.reject()).then(()=>{c.textContent="Copied"},()=>{c.textContent="Select and copy"}).finally(()=>setTimeout(()=>c.textContent="Copy",1500))}
+  const j=e.target.closest("a.jl");if(j){e.preventDefault();jumpRef(j.getAttribute("href").slice(5))}
+});
+
+/* ---------- developer reference ---------- */
+const REF_LAYERS=[
+ {id:"client",name:"Client and capture",fam:"per"},
+ {id:"speech",name:"Speech to text",fam:"per"},
+ {id:"speakers",name:"Who is speaking",fam:"per"},
+ {id:"decide",name:"Fast decisions (System 1)",fam:"s1"},
+ {id:"llm",name:"Language models",fam:"s2"},
+ {id:"script",name:"Script and language",fam:"s1"},
+ {id:"voice",name:"Voice out",fam:"out"},
+ {id:"ui",name:"UI, tools and orchestration",fam:"out"},
+ {id:"serve",name:"Serving and runtimes",fam:"s2"},
+ {id:"eval",name:"Evaluation and data",fam:"s1"}
+];
+const REF=[
+ {id:"handy",layer:"client",name:"Handy",role:"Desktop dictation app to fork",facts:[["Stack","Tauri 2, Rust, React/TypeScript"],["License","MIT"],["Ships with","whisper-rs, Parakeet via transcribe-rs, Silero VAD, clipboard paste"]],use:"The client shell: hotkey, capture, VAD, local models and paste are already wired. Add streaming to your server, app-context capture and the System 1 calls.",code:"git clone https://github.com/cjpais/Handy\ncd Handy  # read AGENTS.md for the build steps",links:[["GitHub","https://github.com/cjpais/Handy"],["Tauri 2 docs","https://v2.tauri.app"]]},
+ {id:"silero",layer:"client",name:"Silero VAD",role:"Voice activity detection",facts:[["Size","~2 MB"],["License","MIT"],["Runs on","CPU, ONNX"]],use:"Gates audio before ASR so silence and noise never reach the models.",code:"pip install silero-vad",links:[["GitHub","https://github.com/snakers4/silero-vad"]]},
+ {id:"smartturn",layer:"client",name:"Smart Turn v3.2",role:"End-of-turn detection for hands-free mode",facts:[["Size","8 MB int8 ONNX (Whisper-tiny base)"],["License","BSD-2-Clause, open data and training code"],["Languages","23"],["Speed","~65 ms per check on a CPU instance"]],use:"After VAD reports a pause, decides from the last 8 s of audio whether the speaker has finished. A Hinglish fine-tune exists; train one for Nepali–English the same way.",code:"uv add pipecat-ai   # weights ship inside Pipecat\nfrom pipecat.audio.turn.smart_turn.local_smart_turn_v3 import LocalSmartTurnAnalyzerV3\nfrom pipecat.audio.vad.silero import SileroVADAnalyzer",links:[["GitHub","https://github.com/pipecat-ai/smart-turn"],["Weights","https://huggingface.co/pipecat-ai/smart-turn-v3"],["Pipecat docs","https://docs.pipecat.ai/server/utilities/turn-detection/smart-turn-overview"],["Hinglish fine-tune","https://huggingface.co/abhishek-040010/smart-turn-hinglish"]],node:"client"},
+ {id:"nemotron-asr",layer:"speech",name:"Nemotron 3.5 ASR Streaming 0.6B",role:"Streaming ASR, default server model",facts:[["Size","600M, cache-aware FastConformer-RNNT"],["License","OpenMDW-1.1, commercial use allowed"],["Languages","40 locales (32 ready out of the box) incl. Hindi; no Nepali"],["Latency","Chunks of 80, 160, 320, 560 or 1,120 ms"],["Accuracy","FLEURS avg WER 9.49% at 320 ms, Hindi 7.41%"],["Runs on","Linux + NVIDIA GPU (Volta to Blackwell, Jetson); GGUF via NeMo-Speech.cpp"]],use:"Streams partial transcripts while the user talks. One H100 sustains about 240 streams at 80 ms chunks. target_lang=auto adds a language tag to each utterance.",code:"pip install \"git+https://github.com/NVIDIA/NeMo.git@main#egg=nemo_toolkit[asr]\"\nimport nemo.collections.asr as nemo_asr\nm = nemo_asr.models.ASRModel.from_pretrained(\"nvidia/nemotron-3.5-asr-streaming-0.6b\")\nprint(m.transcribe([\"file.wav\"]))\n\n# Local C++ runtime\nhf download nvidia/nemotron-3.5-asr-streaming-0.6b nemotron-3.5-asr-streaming-0.6b.q8_0.gguf --local-dir models\nnemo-speech transcribe audio.wav --model models/nemotron-3.5-asr-streaming-0.6b.q8_0.gguf --language auto",links:[["Model card","https://huggingface.co/nvidia/nemotron-3.5-asr-streaming-0.6b"],["Fine-tuning guide","https://huggingface.co/blog/nvidia/fine-tuning-nemotron-35-asr"],["NeMo-Speech.cpp","https://github.com/NVIDIA/NeMo-Speech.cpp"],["Hinglish fine-tune example","https://huggingface.co/addyo07/nemotron-3.5-0.6b-hinglish"]],node:"asr"},
+ {id:"granite",layer:"speech",name:"Granite Speech 4.1 2B",role:"Final-pass ASR, English and European",facts:[["Size","~2B"],["License","Apache 2.0"],["Languages","en, fr, de, es, pt, ja; speech translation"],["Accuracy","5.33 mean WER, Open ASR Leaderboard (public)"],["Extras","Keyword biasing; 2B-NAR and 2B-plus variants; GGUF and MLX builds"]],use:"Re-decodes the full clip after release for the best English accuracy; feed the user dictionary as keyword biases.",code:"pip install -U mlx-audio   # Apple Silicon\npython -m mlx_audio.stt.generate --model ibm-granite/granite-speech-4.1-2b --audio audio.wav --output-path transcript",links:[["Model card","https://huggingface.co/ibm-granite/granite-speech-4.1-2b"],["GitHub","https://github.com/ibm-granite/granite-speech"]],node:"asr"},
+ {id:"qwen-asr",layer:"speech",name:"Qwen3-ASR 1.7B / 0.6B",role:"Final-pass ASR for Indian English, Hindi and broad coverage",facts:[["Size","1.7B or 0.6B"],["License","Apache 2.0"],["Languages","30 languages + 22 Chinese dialects, built-in language ID"],["Accuracy","First on Appen's private accent track (8.46 WER, incl. Indian accents)"],["Streaming","vLLM backend only"]],use:"Use where accents matter; the 0.6B is the Apache-only streaming fallback.",code:"pip install -U qwen-asr\npip install -U \"qwen-asr[vllm]\"   # needed for streaming",links:[["Model card","https://huggingface.co/Qwen/Qwen3-ASR-1.7B"],["Appen private track","https://www.appen.com/blog/hugging-face-open-llm-leaderboard"]],node:"asr"},
+ {id:"cohere",layer:"speech",name:"Cohere Transcribe 03-2026",role:"Alternative final-pass ASR",facts:[["Size","2B"],["License","Apache 2.0"],["Languages","14"],["Accuracy","5.42 avg WER (English leaderboard)"]],use:"Broader European and Asian coverage than Granite; served with vLLM.",code:"# see the release post for the vLLM encoder-decoder setup",links:[["Release post","https://huggingface.co/blog/CohereLabs/cohere-transcribe-03-2026-release"]]},
+ {id:"parakeet",layer:"speech",name:"Parakeet TDT 0.6B v3",role:"On-device streaming ASR (laptop, phone CPU)",facts:[["Size","600M, ~478 MB int8"],["License","CC-BY-4.0 on Hugging Face"],["Languages","25 European"]],use:"The default local model in Handy; fast enough on CPU.",code:"# bundled in Handy via transcribe-rs (ONNX)",links:[["Model card","https://huggingface.co/nvidia/parakeet-tdt-0.6b-v3"]],node:"asr"},
+ {id:"indicconformer",layer:"speech",name:"IndicConformer 600M multilingual",role:"ASR for 22 Indian languages incl. Nepali",facts:[["Size","600M, CTC and RNNT heads"],["License","MIT"],["Languages","22 official Indian languages"]],use:"Base for Nepali–English and other code-switch fine-tunes.",code:"# NeMo or ONNX; see the model card",links:[["Model card","https://huggingface.co/ai4bharat/indic-conformer-600m-multilingual"]],node:"asr"},
+ {id:"omnilingual",layer:"speech",name:"Omnilingual ASR",role:"Long-tail languages",facts:[["Size","300M to 7B"],["License","Apache 2.0"],["Languages","1,600+, extendable with a few examples"]],use:"Batch transcription for languages nothing else covers.",code:"pip install omnilingual-asr",links:[["GitHub","https://github.com/facebookresearch/omnilingual-asr"]]},
+ {id:"whisper",layer:"speech",name:"Whisper large-v3-turbo",role:"Portable multilingual fallback",facts:[["Size","0.8B"],["License","MIT"],["Languages","99"]],use:"Runs anywhere through whisper.cpp (Metal, CUDA, Vulkan).",code:"git clone https://github.com/ggml-org/whisper.cpp",links:[["whisper.cpp","https://github.com/ggml-org/whisper.cpp"],["Weights","https://huggingface.co/openai/whisper-large-v3-turbo"]]},
+ {id:"nemotron-diar",layer:"speakers",name:"Nemotron 3 Diarization",role:"Who is speaking, streaming and offline",facts:[["Size","~100M streaming Sortformer"],["License","OpenMDW-1.1"],["Speakers","Up to 8, arrival-ordered"],["Latency","0.32 to 1.04 s streaming; 30.4 s offline"],["Accuracy","DIHARD III 12.73% DER offline, 13.55% at 0.32 s"],["Runs on","Linux + NVIDIA Ampere, Hopper, Blackwell"]],use:"Own-voice gate in every mode and speaker labels in meetings. Merge with ASR by word timestamps. One early write-up reports needing fixes to the card's steps, so pin versions.",code:"from nemo.collections.asr.models import SortformerEncLabelModel\ndiar = SortformerEncLabelModel.from_pretrained(\"nvidia/Nemotron-3-Diarization\")\nsegments = diar.diarize(audio=[\"meeting.wav\"], batch_size=1)\n\n# or the C++ runtime\nnemo-speech transcribe meeting.wav --diarize --json",links:[["Model card","https://huggingface.co/nvidia/nemotron-3-diarization"],["NVIDIA blog","https://huggingface.co/blog/nvidia/nemotron-diarization"],["NeMo Speech","https://github.com/NVIDIA-NeMo/Speech"]],node:"diar"},
+ {id:"pyannote",layer:"speakers",name:"pyannote community-1",role:"Diarization on CPU and Apple Silicon",facts:[["License","CC-BY-4.0 weights, MIT code (pyannote.audio 4)"],["Runs on","CPU by default, GPU optional"],["Extras","Exclusive diarization mode for easy merge with ASR timestamps"]],use:"The on-device and Mac fallback; also the source of a speaker-embedding model for own-voice enrolment.",code:"pip install pyannote.audio\nfrom pyannote.audio import Pipeline\npipe = Pipeline.from_pretrained(\"pyannote/speaker-diarization-community-1\", token=\"HF_TOKEN\")\nout = pipe(\"audio.wav\")\nfor turn, spk in out.speaker_diarization:\n    print(spk, turn.start, turn.end)",links:[["Model card","https://huggingface.co/pyannote/speaker-diarization-community-1"],["Release post","https://pyannote.ai/blog/community-1"]],node:"diar"},
+ {id:"multitalker",layer:"speakers",name:"Multitalker Parakeet Streaming 0.6B",role:"ASR for overlapping speech",facts:[["Size","600M"],["Use with","Diarization output, one instance per active speaker"]],use:"Add only when meetings have heavy crosstalk.",code:"# see the model card",links:[["Model card","https://huggingface.co/nvidia/multitalker-parakeet-streaming-0.6b-v1"]]},
+ {id:"clef-flash",layer:"decide",name:"Clef-Flash 9B",role:"System 1 on the server",facts:[["Size","9B (Qwen3.5-9B + joint schema head)"],["License","Apache 2.0"],["Input","Text, JSON, images, video"],["Latency","38.8 ms median, 122 ms p95 (Cloudflare Decision Index run)"],["API","Jev / SystemOne compatible"]],use:"Every routing, checking and gating question in one forward pass. The generic vllm serve snippet on the Hub runs it as a chat model; use the bundled joint_schema_model.py to get the decision head.",code:"import sys, torch\nfrom huggingface_hub import snapshot_download\npath = snapshot_download(\"Cloudflare/clef-flash\"); sys.path.insert(0, path)\nfrom joint_schema_model import load_release_model, systemone\nmodel, processor = load_release_model(path, device=\"cuda\")\nprint(systemone(model, processor, {\"model\": \"clef-flash\",\n  \"state\": \"move my three pm with asha to friday\",\n  \"questions\": {\"mode\": {\"type\": \"choice\", \"criteria\": {\n     \"dictate\": \"text to insert\", \"command\": \"an action to perform\"}}}}))",links:[["Model card","https://huggingface.co/Cloudflare/clef-flash"],["Clef 27B","https://huggingface.co/Cloudflare/clef"],["Decision Index","https://clef-evals.workers-ai-mle.workers.dev"]],node:"s1"},
+ {id:"strands",layer:"decide",name:"Strands Decider 2B",role:"System 1 on a laptop",facts:[["Size","1.9B (Qwen3.5-2B-Base + rank-16 LoRA + ~1M pointer head)"],["License","Apache 2.0, recipe and data list published"],["Latency","115 ms median on RTX 3090; 153 ms on M3 Pro"],["Calibration","ECE 0.052; ~95% right at 0.9+ confidence"],["Retrain","About 11 hours on one RTX 3090"]],use:"Serves the same /v1/systemone request format as Jev and Clef, so the client code does not change between device and server.",code:"pip install strands-decider\nstrands-decider serve StrandsAgents/strands-decider-2B-hobson-v19 --port 8000\ncurl -s localhost:8000/v1/systemone -H 'content-type: application/json' \\\n  -d '{\"state\":\"Help! payouts failing\",\"questions\":{\"is_urgent\":{\"type\":\"noul\",\"instructions\":\"Does this convey urgency?\"}}}'",links:[["GitHub","https://github.com/strands-labs/strands-decider"],["Weights","https://huggingface.co/StrandsAgents/strands-decider-2B-hobson-v19"],["PyPI","https://pypi.org/project/strands-decider/"]],node:"s1"},
+ {id:"gliner",layer:"decide",name:"GLiNER2.5-Decide 340M and multi-Decide 287M",role:"System 1 on a phone or CPU",facts:[["Size","340M (English) or 287M (multilingual)"],["License","Apache 2.0"],["Latency","38.3 ms p50 on V100; 167 ms on a 48-vCPU CPU"],["Extras","Joint constraints across questions"]],use:"Use the multilingual variant for code-switched users on phones.",code:"pip install gliner2\nfrom gliner2 import AutoExtractor\nmodel = AutoExtractor.from_pretrained(\"fastino/GLiNER2.5-Decide\")",links:[["Model card","https://huggingface.co/fastino/GLiNER2.5-Decide"],["Release post","https://fastino.ai/blog/gliner-2-5-decide-open-weight-decision-model"],["GitHub","https://github.com/fastino-ai/GLiNER2"]],node:"s1"},
+ {id:"jev",layer:"decide",name:"Jev request format and open reimplementations",role:"The contract every System 1 model speaks",facts:[["Jev","Hosted only, closed weights"],["open-jev","PyTorch reconstruction, random weights (study only)"]],use:"Keep state + typed questions (choice, noul, score) as your internal API so models swap freely.",code:"POST /v1/systemone  {\"state\": ..., \"questions\": {id: {type, instructions, criteria}}}",links:[["Jev docs","https://docs.typesafe.ai/introduction"],["Jev deep dive","https://flaviocopes.com/jev/"],["open-jev","https://github.com/kyegomez/open-jev"],["Model comparison","https://www.marktechpost.com/2026/10/02/decision-ai-models-explained-typesafe-jev-vs-fastino-glide-gliner2-5-decide-and-open-source-competitors/"]]},
+ {id:"live-polish",layer:"llm",name:"Live polish (streaming cleanup)",role:"Polished text while the user is still talking",facts:[["Commit rule","LocalAgreement-2: a word is final once two consecutive partials agree"],["Free first layer","Nemotron 3.5 ASR already emits punctuation and capitalization"],["Rules","Fillers, repeats, spoken numbers and times, in code"],["Rewrite","Small model re-polishes each committed clause; System 1 flags self-corrections, names, times"]],use:"Never rewrite tentative words; only committed clauses change, once. Feed committed text into the cleanup model's KV cache so the final pass after release is short. WhisperLiveKit is an open reference that combines LocalAgreement streaming with diarization.",code:"pip install whisperlivekit\nwlk --host 0.0.0.0 --port 8000 --model medium --diarization --language en\n# --backend-policy picks SimulStreaming (default) or LocalAgreement\n# LocalAgreement-2: confirmed(t) = longest_common_prefix(partial(t-1), partial(t))",links:[["Whisper-Streaming paper","https://arxiv.org/abs/2307.14743"],["whisper_streaming","https://github.com/ufal/whisper_streaming"],["WhisperLiveKit","https://github.com/QuentinFuxa/WhisperLiveKit"],["NeMo text processing (ITN)","https://github.com/NVIDIA/NeMo-text-processing"]],node:"polish"},
+ {id:"cleanup",layer:"llm",name:"Qwen3.5 4B / 2B / 0.8B cleanup model",role:"Turns raw transcripts into finished text",facts:[["License","Apache 2.0"],["Measured","Fine-tuned 2B beat untuned models up to 35B on dictation cleanup; Q4 2B averages 145 ms, 1.5 GB"],["Recipe","Completions-only LoRA, lr 2e-4, 2 epochs, Unsloth"]],use:"4B + LoRA on the server, 2B Q4 on laptops, 0.8B 4-bit on phones. Keep the system prompt fixed for prefix caching.",code:"# server: base model + your LoRA adapter\nvllm serve Qwen/Qwen3.5-4B --enable-lora --lora-modules cleanup=./cleanup-lora\n# laptop: your fine-tuned GGUF\nllama-server -m cleanup-qwen3.5-2b-Q4_K_M.gguf --port 8080",links:[["Fine-tune write-up","https://github.com/hourliert/VoiceInk-Qwen3.5-2B-FT/blob/master/docs/BLOG_POST.md"],["Latency benchmark","https://github.com/xuancongwen/local-dictation-cleanup"],["Starter dataset","https://huggingface.co/datasets/amitashwini/mumble-cleanup-training"],["Unsloth","https://github.com/unslothai/unsloth"]],node:"cleanup"},
+ {id:"qwen38",layer:"llm",name:"Qwen3.8-27B",role:"System 2 reasoning agent",facts:[["Size","27B dense, hybrid attention, vision encoder"],["License","Apache 2.0"],["Context","262K native, up to 1M"],["Memory","~27 GB at FP8, ~54 GB at BF16"]],use:"Plans multi-step commands and fills UI slots; the only model that must stay on a server.",code:"pip install vllm\nvllm serve Qwen/Qwen3.8-27B-FP8",links:[["Model card","https://huggingface.co/Qwen/Qwen3.8-27B"],["Qwen repo","https://github.com/QwenLM/Qwen3.8"]],node:"agent"},
+ {id:"indicxlit",layer:"script",name:"IndicXlit",role:"Roman to native script and back",facts:[["Size","~11M"],["License","MIT"],["Languages","21 South Asian languages"]],use:"Returns text in the script the reader expects; small enough to always run on the device.",code:"pip install ai4bharat-transliteration\nfrom ai4bharat.transliteration import XlitEngine\ne = XlitEngine(\"ne\", beam_width=10)\nprint(e.translit_sentence(\"report bholi samma ready hunchha\"))",links:[["Project page","https://ai4bharat.iitm.ac.in/?p=1121"],["GitHub","https://github.com/AI4Bharat/IndicXlit"]],node:"verify"},
+ {id:"kokoro",layer:"voice",name:"Kokoro-82M",role:"Fast TTS",facts:[["Size","82M"],["License","Apache 2.0"],["Languages","English (US, UK), es, fr, hi, it, ja, pt-BR, zh"]],use:"Holding lines and short replies; runs on CPU and phones.",code:"pip install \"kokoro>=0.9.4\" soundfile   # plus espeak-ng\nfrom kokoro import KPipeline\npipe = KPipeline(lang_code=\"a\")   # 'h' for Hindi",links:[["Model card","https://huggingface.co/hexgrad/Kokoro-82M"],["GitHub","https://github.com/hexgrad/kokoro"]],node:"tts"},
+ {id:"omnivoice",layer:"voice",name:"OmniVoice",role:"Multilingual TTS, voice cloning and design",facts:[["Size","0.6B"],["License","Apache 2.0"],["Languages","600+ (unstable on some low-resource ones)"],["Speed","RTF as low as 0.025"]],use:"Replies in any language, with a voice described in text.",code:"pip install omnivoice\nomnivoice-infer --model k2-fsa/OmniVoice --text \"Moved your review to Friday.\" --instruct \"female, warm\" --output reply.wav",links:[["Model card","https://huggingface.co/k2-fsa/OmniVoice"],["GitHub","https://github.com/k2-fsa/OmniVoice"]],node:"tts"},
+ {id:"indicparler",layer:"voice",name:"Indic Parler-TTS",role:"Best-quality Indic voices",facts:[["Languages","21 incl. Nepali, Hindi, Maithili, English"],["Voices","69, steered by a text caption"]],use:"Nepali and Hindi replies where quality matters more than speed.",code:"# see the model card",links:[["Model card","https://huggingface.co/ai4bharat/indic-parler-tts"]],node:"tts"},
+ {id:"pockettts",layer:"voice",name:"Kyutai pocket-tts",role:"CPU streaming TTS",facts:[["Runs on","GPU and CPU"],["License","See model card"]],use:"Phones and CPU-only machines.",code:"# see the model card",links:[["Model card","https://huggingface.co/kyutai/pocket-tts"],["Open TTS Leaderboard","https://huggingface.co/spaces/hf-audio/open_tts_leaderboard"]]},
+ {id:"a2ui",layer:"ui",name:"A2UI",role:"Agent-to-user interface format",facts:[["Version","v0.9.1 (stable v0.9 family)"],["License","Apache 2.0"],["Transports","A2A and AG-UI"]],use:"Declarative cards from a trusted component catalog: the client renders them, the agent only sends data.",code:"git clone https://github.com/a2ui-project/a2ui.git",links:[["GitHub","https://github.com/a2ui-project/a2ui"],["AG-UI docs","https://docs.ag-ui.com"]],node:"genui"},
+ {id:"mcp",layer:"ui",name:"Model Context Protocol",role:"Tool access for the agent",facts:[["Use","Calendar, mail, files, internal APIs"]],use:"One protocol for every tool; read-only calls can be prefetched while the user talks.",code:"# see the specification",links:[["Specification","https://modelcontextprotocol.io"]],node:"tools"},
+ {id:"pipecat",layer:"ui",name:"Pipecat and LiveKit Agents",role:"Voice orchestration",facts:[["Pipecat","BSD-2-Clause, bundles Smart Turn"],["LiveKit Agents","Apache 2.0, preemptive generation on partial transcripts"]],use:"Turn-taking, barge-in and streaming audio both ways for Converse mode.",code:"uv add pipecat-ai",links:[["Pipecat","https://github.com/pipecat-ai/pipecat"],["LiveKit Agents","https://github.com/livekit/agents"]]},
+ {id:"vllm",layer:"serve",name:"vLLM",role:"Server inference for LLMs and Qwen3-ASR",facts:[["License","Apache 2.0"],["Features","Prefix caching, multi-LoRA, FP8"]],use:"Hosts the cleanup model, the agent and Qwen3-ASR streaming.",code:"pip install vllm",links:[["Docs","https://docs.vllm.ai"]]},
+ {id:"llamacpp",layer:"serve",name:"llama.cpp and MLX",role:"On-device inference",facts:[["llama.cpp","MIT, GGUF, CPU/GPU everywhere"],["MLX","MIT, Apple Silicon; mlx-audio for speech"]],use:"Run the 2B cleanup and decider locally.",code:"brew install llama.cpp   # or build from source",links:[["llama.cpp","https://github.com/ggml-org/llama.cpp"],["MLX","https://github.com/ml-explore/mlx"],["mlx-audio","https://github.com/Blaizzy/mlx-audio"]]},
+ {id:"premove",layer:"serve",name:"premove",role:"KV prefill and speculative generation from partial transcripts",facts:[["License","MIT"],["Status","Pre-alpha"]],use:"The pattern behind the hot path: warm the LLM cache while the user is still talking.",code:"pip install premove",links:[["PyPI","https://pypi.org/project/premove/"]]},
+ {id:"leaderboards",layer:"eval",name:"Open ASR and Open TTS leaderboards",role:"Pick and track models",facts:[["ASR","Public, private and Indian tracks"],["TTS","Intelligibility, speed, speaker similarity"]],use:"Check new releases against your shortlist before swapping models.",code:"",links:[["Open ASR Leaderboard","https://huggingface.co/spaces/hf-audio/open_asr_leaderboard"],["Open TTS Leaderboard","https://huggingface.co/spaces/hf-audio/open_tts_leaderboard"]]},
+ {id:"monsoon",layer:"eval",name:"Monsoon hi-IN / en-IN and OIWER",role:"Fair Indic evaluation",facts:[["Speakers","4,888 across four splits"],["Metric","OIWER accepts every valid spelling"]],use:"Score Hindi and other Indic output fairly; build a Nepali–English lattice set the same way.",code:"pip install voi-oiwer",links:[["Monsoon hi-IN","https://huggingface.co/datasets/VoiceArena/MonsoonASR-Open-ASR-leaderboard-hi-IN"],["Monsoon en-IN","https://huggingface.co/datasets/VoiceArena/MonsoonASR-Open-ASR-leaderboard-en-IN"],["Write-up","https://huggingface.co/blog/open-asr-leaderboard-global-south"]]}
+];
+const NODE_REF={polish:"live-polish",client:"smartturn",asr:"nemotron-asr",diar:"nemotron-diar",s1:"clef-flash",verify:"indicxlit",cleanup:"cleanup",app:"handy",agent:"qwen38",tools:"mcp",genui:"a2ui",tts:"kokoro"};
+function escH(s){return String(s).replace(/[&<>"]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]))}
+function renderRef(){
+  const idx=$("#refIndex"),body=$("#refBody");
+  idx.innerHTML=REF_LAYERS.map(L=>`<div class="ri-group"><div class="ri-h"><i style="background:var(--${L.fam})"></i>${L.name}</div>${REF.filter(r=>r.layer===L.id).map(r=>`<a href="#ref-${r.id}" data-id="${r.id}">${escH(r.name)}</a>`).join("")}</div>`).join("");
+  body.innerHTML=REF_LAYERS.map(L=>`<section class="rl" id="refl-${L.id}"><h3 class="rl-h"><i style="background:var(--${L.fam})"></i>${L.name}</h3>${REF.filter(r=>r.layer===L.id).map(r=>`
+    <article class="rc ${L.fam}" id="ref-${r.id}" data-search="${escH((r.name+" "+r.role+" "+r.facts.map(f=>f.join(" ")).join(" ")+" "+r.use).toLowerCase())}">
+      <header><h4>${escH(r.name)}</h4><span class="role">${escH(r.role)}</span></header>
+      <dl class="facts">${r.facts.map(f=>`<div><dt>${escH(f[0])}</dt><dd>${escH(f[1])}</dd></div>`).join("")}</dl>
+      <p class="use">${escH(r.use)}</p>
+      ${r.code?`<div class="codewrap"><pre><code>${escH(r.code)}</code></pre><button type="button" class="copy" data-code="${escH(r.code)}">Copy</button></div>`:""}
+      <div class="rlinks">${r.links.map(l=>`<a href="${l[1]}" target="_blank" rel="noopener">${escH(l[0])}</a>`).join("")}</div>
+    </article>`).join("")}</section>`).join("");
+  body.querySelectorAll(".copy").forEach(b=>b.addEventListener("click",async()=>{
+    try{await navigator.clipboard.writeText(b.dataset.code);b.textContent="Copied"}catch(e){const ta=document.createElement("textarea");ta.value=b.dataset.code;document.body.appendChild(ta);ta.select();try{document.execCommand("copy");b.textContent="Copied"}catch(_){b.textContent="Select and copy"}ta.remove()}
+    setTimeout(()=>b.textContent="Copy",1500);
+  }));
+  idx.querySelectorAll("a").forEach(a=>a.addEventListener("click",e=>{e.preventDefault();jumpRef(a.dataset.id)}));
+}
+function openRef(){showTab("build");return true}
+function jumpRef(id){
+  openRef(true);const el=$("#ref-"+id);if(!el)return;
+  el.scrollIntoView({behavior:reduce?"auto":"smooth",block:"start"});
+  el.classList.remove("flash");void el.offsetWidth;el.classList.add("flash");
+  try{history.replaceState(null,"","#ref-"+id)}catch(e){}
+}
+
+$("#refSearch").addEventListener("input",e=>{
+  const q=e.target.value.trim().toLowerCase();
+  document.querySelectorAll("#refBody .rc").forEach(c=>c.hidden=!!q&&!c.dataset.search.includes(q));
+  document.querySelectorAll("#refBody .rl").forEach(s=>s.hidden=![...s.querySelectorAll(".rc")].some(c=>!c.hidden));
+});
+renderRef();
+if(location.hash.startsWith("#ref-"))jumpRef(location.hash.slice(5));
+
+reset();
+showTab("watch");
+})();
+</script>
+</body>
+</html>

@@ -2,7 +2,7 @@
 .myvenv/
 /handy
 /typesafe-router
-
+.agents
 # Credentials
 vertex-key.json
 

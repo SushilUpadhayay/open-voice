@@ -47,7 +47,7 @@
               orchestrator reads customer config
                                       |
                  +--------------------+--------------------+
-        DECIDER (Gemini Flash-Lite)              CLEANUP (Gemini)
+        DECIDER (Gemini Flash)              CLEANUP (Gemini Flash)
         "dictation or command?"                  raw -> clean text
                  +--------------------+--------------------+
                                       |

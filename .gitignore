@@ -1,5 +1,7 @@
 # Virtual environment
 .myvenv/
+/handy
+/typesafe-router
 
 # Credentials
 vertex-key.json

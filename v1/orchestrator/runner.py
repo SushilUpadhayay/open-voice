@@ -1,10 +1,12 @@
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass
+from datetime import datetime
 from typing import Any, Dict, Optional
 import time
 
 from ..decider.interface import Decider, DecisionResult
 from ..cleanup.gemini_cleanup import GeminiCleanup
+from ..agent.system2 import System2Agent, AgentResult
 
 
 @dataclass
@@ -27,6 +29,8 @@ class OrchestratorResult:
     cleanup_auth_ms: float = 0.0
     cleanup_network_ms: float = 0.0
     command_placeholder: Optional[str] = None
+    agent_result: Optional[AgentResult] = None
+    agent_latency_ms: float = 0.0
 
 
 class Orchestrator:
@@ -40,10 +44,12 @@ class Orchestrator:
         decider: Decider,
         cleanup: GeminiCleanup,
         settings: Dict[str, Any],
+        agent: Optional[System2Agent] = None,
     ):
         self.decider = decider
         self.cleanup = cleanup
         self.settings = settings
+        self.agent = agent
         self.threshold = float(
             settings.get("vertex", {}).get("confidence_threshold", 0.75)
         )
@@ -54,6 +60,8 @@ class Orchestrator:
         customer_config: Dict[str, Any],
         reverse_order: bool = False,
         asr_latency_ms: float = 0.0,
+        use_cleaned_for_agent: bool = False,
+        reference_datetime: Optional[datetime] = None,
     ) -> OrchestratorResult:
         start_time = time.perf_counter()
         customer_name = customer_config.get("name", "unknown")
@@ -67,6 +75,8 @@ class Orchestrator:
         cleanup_ms = 0.0
         cleanup_auth_ms = 0.0
         cleanup_network_ms = 0.0
+        agent_res: Optional[AgentResult] = None
+        agent_ms = 0.0
 
         if not actions_enabled:
             # Actions OFF: skip decider, treat everything as dictation
@@ -93,6 +103,8 @@ class Orchestrator:
                 cleanup_auth_ms=cleanup_auth_ms,
                 cleanup_network_ms=cleanup_network_ms,
                 total_latency_ms=round(total_ms, 2),
+                agent_result=None,
+                agent_latency_ms=0.0,
             )
 
         # Actions ON: Run decider and cleanup in parallel
@@ -124,8 +136,20 @@ class Orchestrator:
 
         if is_confident_command:
             branch = "command"
-            command_msg = f'would call System 2 with raw text: "{raw_text.replace("。", "।")}"'
-            final_text = command_msg
+            if self.agent:
+                tools_enabled = bool(customer_config.get("tools", True))
+                agent_input = cleaned_text if (use_cleaned_for_agent and cleaned_text) else raw_text
+                agent_res = self.agent.process(
+                    text=agent_input,
+                    tools_enabled=tools_enabled,
+                    reference_datetime=reference_datetime,
+                )
+                agent_ms = agent_res.latency_ms
+                final_text = agent_res.reply
+                command_msg = None
+            else:
+                command_msg = f'would call System 2 with raw text: "{raw_text.replace("。", "।")}"'
+                final_text = command_msg
         else:
             branch = "dictation"
             final_text = cleaned_text if cleanup_enabled else raw_text
@@ -151,5 +175,7 @@ class Orchestrator:
             cleanup_network_ms=cleanup_network_ms,
             total_latency_ms=round(total_ms, 2),
             command_placeholder=command_msg,
+            agent_result=agent_res,
+            agent_latency_ms=agent_ms,
         )
 

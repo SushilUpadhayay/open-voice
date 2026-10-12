@@ -1,3 +1,4 @@
 name: "customer_b"
 actions: true
 cleanup: true
+tools: true

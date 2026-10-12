@@ -1,0 +1,21 @@
+text,expected_tool,expected_args,notes
+"रामलाई रिपोर्टको बारेमा इमेल पठाऊ: विषय रिपोर्ट, व्यहोरा काम सकियो।",send_email,"{""to"": ""राम"", ""subject"": ""रिपोर्ट"", ""body"": ""काम सकियो।""}",clear_details
+"भोलि बिहान दश बजे बैठक राख।",create_calendar_event,"{""title"": ""बैठक"", ""date"": ""2026-10-13"", ""start_time"": ""10:00""}",clear_details
+"मलाई आज साँझ पाँच बजे औषधी खान सम्झाऊ।",set_reminder,"{""text"": ""औषधी खान"", ""date"": ""2026-10-12"", ""time"": ""17:00""}",clear_details
+"सितालाई बैठकको माइन्युट इमेल पठाऊ: विषय माइन्युट, व्यहोरा फाइल हेर्नुहोला।",send_email,"{""to"": ""सिता"", ""subject"": ""माइन्युट"", ""body"": ""फाइल हेर्नुहोला।""}",clear_details
+"पर्सि दिउँसो दुई बजे परियोजना छलफल कार्यक्रम राख।",create_calendar_event,"{""title"": ""परियोजना छलफल"", ""date"": ""2026-10-14"", ""start_time"": ""14:00""}",clear_details
+"भोलि दिउँसो तीन बजे बिल तिर्न सम्झाऊ।",set_reminder,"{""text"": ""बिल तिर्न"", ""date"": ""2026-10-13"", ""time"": ""15:00""}",clear_details
+"पर्सि साँझ चार बजे सम्झाऊ।",set_reminder,"{""text"": ""सम्झाउने"", ""date"": ""2026-10-14"", ""time"": ""16:00""}",relative_date_time
+"भोलि बिहान नौ बजे टिम बैठक तय गर।",create_calendar_event,"{""title"": ""टिम बैठक"", ""date"": ""2026-10-13"", ""start_time"": ""09:00""}",relative_date_time
+"आज राति आठ बजे कल गर्न सम्झाऊ।",set_reminder,"{""text"": ""कल गर्न"", ""date"": ""2026-10-12"", ""time"": ""20:00""}",relative_date_time
+"पर्सि बिहान एघार बजे बजेट समीक्षा बैठक राख।",create_calendar_event,"{""title"": ""बजेट समीक्षा"", ""date"": ""2026-10-14"", ""start_time"": ""11:00""}",relative_date_time
+"उम् बैठक राख पर्सि बिहान होइन दिउँसो दुई बजे।",create_calendar_event,"{""title"": ""बैठक"", ""date"": ""2026-10-14"", ""start_time"": ""14:00""}",messy_self_correction
+"ए रामलाई इमेल पठाऊ विषय बधाई व्यहोरा शुभकामना भोलि होइन आज।",send_email,"{""to"": ""राम"", ""subject"": ""बधाई"", ""body"": ""शुभकामना""}",messy_self_correction
+"मलाई साँझ छ बजे सम्झाऊ अँ होइन पाँच बजे किताब पढ्न।",set_reminder,"{""text"": ""किताब पढ्न"", ""date"": ""2026-10-12"", ""time"": ""17:00""}",messy_self_correction
+"हजुर बैठक तय गर भोलि होइन पर्सि बिहान दश बजे।",create_calendar_event,"{""title"": ""बैठक"", ""date"": ""2026-10-14"", ""start_time"": ""10:00""}",messy_self_correction
+"रामलाई इमेल पठाऊ।",NONE,{},missing_details
+"बैठक राख।",NONE,{},missing_details
+"मलाई सम्झाऊ।",NONE,{},missing_details
+"मलाई चिया बनाइदेऊ।",NONE,{},no_matching_tool
+"सिताको नम्बर खोज।",NONE,{},no_matching_tool
+"गीत बजाऊ।",NONE,{},no_matching_tool

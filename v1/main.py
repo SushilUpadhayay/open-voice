@@ -20,6 +20,7 @@ from v1.config import load_settings, load_customer_config
 from v1.asr.client import IndicConformerClient
 from v1.decider.gemini_decider import GeminiDecider
 from v1.cleanup.gemini_cleanup import GeminiCleanup
+from v1.agent.system2 import System2Agent
 from v1.orchestrator.runner import Orchestrator
 from v1.tests.test_runner import run_test_suite
 
@@ -51,10 +52,18 @@ def build_system(settings: dict) -> tuple[IndicConformerClient, Orchestrator]:
         model_name=vertex_cfg.get("cleanup_model", "gemini-2.5-flash"),
     )
 
+    agent = System2Agent(
+        project_id=vertex_cfg["project_id"],
+        region=vertex_cfg["region"],
+        key_file=key_file,
+        model_name=vertex_cfg.get("agent_model", "gemini-2.5-flash"),
+    )
+
     orchestrator = Orchestrator(
         decider=decider,
         cleanup=cleanup,
         settings=settings,
+        agent=agent,
     )
 
     asr_client = IndicConformerClient(
@@ -131,6 +140,7 @@ def main():
     print(f"\n[Orchestrator] Processing for customer '{customer_cfg.get('name')}'...")
     print(f"  Actions enabled: {customer_cfg.get('actions', False)}")
     print(f"  Cleanup enabled: {customer_cfg.get('cleanup', True)}")
+    print(f"  Tools enabled:   {customer_cfg.get('tools', True)}")
 
     result = orchestrator.process(
         raw_text=raw_text,
@@ -152,12 +162,25 @@ def main():
     if result.cleaned_text:
         print(f"Cleaned Text:    {result.cleaned_text} (changed={result.cleanup_changed})")
     
+    if result.agent_result:
+        print(f"Agent Action:    {'Tool Executed' if result.agent_result.action_taken else 'No Tool Call'}")
+        if result.agent_result.tool_name:
+            print(f"Tool Called:     {result.agent_result.tool_name}")
+            print(f"Tool Arguments:  {result.agent_result.tool_args}")
+            print(f"Tool Result:     {result.agent_result.tool_result}")
+        elif result.agent_result.clarification_asked:
+            print("Agent Note:      Clarification question asked (missing details)")
+        elif result.agent_result.refusal:
+            print("Agent Note:      Request refused (no matching tool)")
+
     print(f"Final Output:    {result.output_text}")
     print("\n[Timings]")
     if result.asr_latency_ms > 0:
         print(f"  ASR:           {result.asr_latency_ms:.1f} ms")
     print(f"  Decider:       {result.decider_latency_ms:.1f} ms")
     print(f"  Cleanup:       {result.cleanup_latency_ms:.1f} ms")
+    if result.agent_latency_ms > 0:
+        print(f"  Agent:         {result.agent_latency_ms:.1f} ms")
     print(f"  Total:         {result.total_latency_ms:.1f} ms")
     print("=" * 50)
 

@@ -4,6 +4,7 @@ vertex:
   key_file: "../vertex-key.json"
   decider_model: "gemini-2.5-flash"
   cleanup_model: "gemini-2.5-flash"
+  agent_model: "gemini-2.5-flash"
   confidence_threshold: 0.75
 
 asr:

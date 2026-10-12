@@ -1,4 +1,4 @@
-from datetime import datetime
+from datetime import datetime, timezone, timedelta
 from pathlib import Path
 from typing import Any, Dict, List
 import csv
@@ -51,8 +51,13 @@ def run_test_suite(
             reverse_order=False,
         )
         dec_opt = res.decision.option if res.decision else res.branch
-        if stype == "ambiguous" and expected in ("dictation", "unclear"):
-            is_correct = res.branch in ("dictation", "unclear") or dec_opt in ("dictation", "unclear")
+        if stype == "ambiguous":
+            if expected == "command":
+                # Sentence expected to route to command
+                is_correct = (res.branch == "command")
+            else:
+                # For ambiguous dictation rows, treat both dictation and unclear as correct
+                is_correct = res.branch in ("dictation", "unclear") or dec_opt in ("dictation", "unclear")
         else:
             is_correct = res.branch == expected
 
@@ -147,7 +152,8 @@ def run_test_suite(
     else:
         order_sensitivity_rate = 0.0
 
-    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+    nepal_tz = timezone(timedelta(hours=5, minutes=45))
+    timestamp = datetime.now(nepal_tz).strftime("%Y%m%d_%H%M%S")
     customer_name = customer_config.get("name", "customer")
 
     report_data = {

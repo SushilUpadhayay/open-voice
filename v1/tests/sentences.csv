@@ -23,7 +23,7 @@ text,expected,type
 अनि सिताको त्यो नम्बर खोज न।,command,messy_command
 हजुर एउटा इमेल लेख हाम्रो टिमलाई बैठकको बारेमा।,command,messy_command
 ए आजको कार्यक्रम के के छन् देखाऊ।,command,messy_command
-रामलाई रिपोर्ट तयार भयो भन्नु।,command,ambiguous
+रामलाई रिपोर्ट तयार भयो भन्नु।,command,clear_command
 भोलि बैठक छ।,dictation,ambiguous
 इमेल पठाउनुपर्ने छ।,dictation,ambiguous
 सिताले फोन गर्न भनेकी थिइन्।,dictation,ambiguous

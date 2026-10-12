@@ -13,3 +13,4 @@ V1/results/
 # Python cache
 __pycache__/
 *.py[cod]
+/graphify-out

@@ -7,6 +7,7 @@ import json
 import statistics
 import sys
 import time
+import wave
 
 # Path setup
 TESTS_DIR = Path(__file__).resolve().parent
@@ -17,6 +18,7 @@ for p in [str(WORKSPACE_ROOT), str(V1_DIR)]:
         sys.path.insert(0, p)
 
 from v1.config import load_settings
+from v1.asr.client import IndicConformerClient
 from v1.decider.gemini_decider import GeminiDecider
 from v1.cleanup.gemini_cleanup import GeminiCleanup
 from v1.agent.system2 import System2Agent
@@ -49,6 +51,16 @@ def calc_stats(values: List[float]) -> Dict[str, float]:
         "mean": round(statistics.mean(values), 2),
         "max": round(max(values), 2),
     }
+
+
+def get_audio_duration_seconds(file_path: Path) -> float:
+    try:
+        with wave.open(str(file_path), "rb") as wf:
+            frames = wf.getnframes()
+            rate = wf.getframerate()
+            return round(frames / float(rate), 2) if rate > 0 else 0.0
+    except Exception:
+        return 0.0
 
 
 def run_mode_latency_test(
@@ -278,12 +290,162 @@ def run_mode_latency_test(
     return payload_json
 
 
+def run_asr_dictation_latency_test(
+    orchestrator: Orchestrator,
+    asr_client: IndicConformerClient,
+    audio_path: Path,
+    output_dir: Path,
+    timed_runs: int = 5,
+    sleep_between: float = 0.5,
+) -> Dict[str, Any]:
+    actions_flag = False
+    tools_flag = False
+    cleanup_flag = True
+
+    audio_duration_s = get_audio_duration_seconds(audio_path)
+
+    print(f"\n========================================================")
+    print(f"RUNNING LATENCY TEST: Mode = ASR_DICTATION")
+    print(f"Input: {audio_path.name} ({audio_duration_s:.2f}s)")
+    print(f"Switches: actions={actions_flag}, tools={tools_flag}, cleanup={cleanup_flag}")
+    print(f"Protocol: 1 warm-up + {timed_runs} timed runs")
+    print(f"========================================================")
+
+    # 1 Warm-up run
+    t0_warmup = time.perf_counter()
+    warmup_raw_text, warmup_asr_ms = asr_client.transcribe(audio_path)
+    res_warmup = orchestrator.process(
+        raw_text=warmup_raw_text,
+        actions=actions_flag,
+        cleanup=cleanup_flag,
+        tools=tools_flag,
+        asr_latency_ms=warmup_asr_ms,
+    )
+    warmup_total_ms = (time.perf_counter() - t0_warmup) * 1000.0
+
+    warmup_record = {
+        "run": 0,
+        "is_warmup": True,
+        "audio_duration_s": audio_duration_s,
+        "asr_ms": round(warmup_asr_ms, 1),
+        "raw_text": warmup_raw_text,
+        "cleanup_ms": round(res_warmup.cleanup_latency_ms, 1),
+        "clean_text": res_warmup.output_text,
+        "total_ms": round(warmup_total_ms, 1),
+    }
+    time.sleep(sleep_between)
+
+    # 5 Timed runs
+    timed_records: List[Dict[str, Any]] = []
+    asr_latencies: List[float] = []
+    cleanup_latencies: List[float] = []
+    total_latencies: List[float] = []
+
+    for r in range(1, timed_runs + 1):
+        t0_run = time.perf_counter()
+        raw_text, asr_ms = asr_client.transcribe(audio_path)
+        res = orchestrator.process(
+            raw_text=raw_text,
+            actions=actions_flag,
+            cleanup=cleanup_flag,
+            tools=tools_flag,
+            asr_latency_ms=asr_ms,
+        )
+        total_ms = (time.perf_counter() - t0_run) * 1000.0
+
+        asr_latencies.append(asr_ms)
+        cleanup_latencies.append(res.cleanup_latency_ms)
+        total_latencies.append(total_ms)
+
+        rec = {
+            "run": r,
+            "is_warmup": False,
+            "audio_duration_s": audio_duration_s,
+            "asr_ms": round(asr_ms, 1),
+            "raw_text": raw_text,
+            "cleanup_ms": round(res.cleanup_latency_ms, 1),
+            "clean_text": res.output_text,
+            "total_ms": round(total_ms, 1),
+        }
+        timed_records.append(rec)
+
+        print(f"    Run {r}: Total={total_ms:.1f}ms | ASR={asr_ms:.1f}ms | Cleanup={res.cleanup_latency_ms:.1f}ms | Raw: \"{raw_text}\" -> Clean: \"{res.output_text}\"")
+        if r < timed_runs:
+            time.sleep(sleep_between)
+
+    summary_stats = {
+        "audio_duration_s": audio_duration_s,
+        "asr": calc_stats(asr_latencies),
+        "cleanup": calc_stats(cleanup_latencies),
+        "total": calc_stats(total_latencies),
+    }
+
+    nepal_tz = timezone(timedelta(hours=5, minutes=45))
+    timestamp = datetime.now(nepal_tz).strftime("%Y%m%d_%H%M%S")
+    output_dir.mkdir(parents=True, exist_ok=True)
+
+    json_path = output_dir / f"latency_asr_dictation_{timestamp}.json"
+    md_path = output_dir / f"latency_asr_dictation_{timestamp}.md"
+
+    payload_json = {
+        "timestamp": timestamp,
+        "mode": "asr_dictation",
+        "input_audio": str(audio_path.relative_to(WORKSPACE_ROOT) if audio_path.is_relative_to(WORKSPACE_ROOT) else audio_path),
+        "audio_duration_seconds": audio_duration_s,
+        "switches": {
+            "actions": actions_flag,
+            "tools": tools_flag,
+            "cleanup": cleanup_flag,
+        },
+        "summary": summary_stats,
+        "warmup": warmup_record,
+        "runs": timed_records,
+    }
+
+    with open(json_path, "w", encoding="utf-8") as f:
+        json.dump(payload_json, f, ensure_ascii=False, indent=2)
+
+    # Markdown report
+    with open(md_path, "w", encoding="utf-8") as f:
+        f.write("# Latency Report: ASR_DICTATION\n\n")
+        f.write(f"- **Timestamp:** {timestamp}\n")
+        f.write(f"- **Mode:** `asr_dictation`\n")
+        f.write(f"- **Input Audio:** `{payload_json['input_audio']}`\n")
+        f.write(f"- **Audio Duration:** {audio_duration_s:.2f} s\n")
+        f.write(f"- **Switches:** `actions={actions_flag}`, `tools={tools_flag}`, `cleanup={cleanup_flag}`\n")
+        f.write(f"- **Protocol:** 1 warm-up call (skipped), followed by {timed_runs} measured runs.\n\n")
+
+        f.write("## 1. Mode Summary\n\n")
+        f.write("| Component | Min (ms) | Median (ms) | Mean (ms) | Max (ms) |\n")
+        f.write("|---|---|---|---|---|\n")
+        asr_st = summary_stats["asr"]
+        cln_st = summary_stats["cleanup"]
+        tot_st = summary_stats["total"]
+        f.write(f"| **ASR (wav in -> raw text)** | {asr_st['min']:.1f} | {asr_st['median']:.1f} | {asr_st['mean']:.1f} | {asr_st['max']:.1f} |\n")
+        f.write(f"| **Cleanup (raw text -> clean text)** | {cln_st['min']:.1f} | {cln_st['median']:.1f} | {cln_st['mean']:.1f} | {cln_st['max']:.1f} |\n")
+        f.write(f"| **Total (wav in -> final clean text)** | **{tot_st['min']:.1f}** | **{tot_st['median']:.1f}** | **{tot_st['mean']:.1f}** | **{tot_st['max']:.1f}** |\n\n")
+
+        f.write("## 2. Runs Log\n\n")
+        f.write("| Run | Audio Duration (s) | ASR (ms) | Raw Text Out | Cleanup (ms) | Clean Text Out | Total (ms) |\n")
+        f.write("|---|---|---|---|---|---|---|\n")
+        w = warmup_record
+        f.write(f"| Warm-up | {w['audio_duration_s']:.2f} | {w['asr_ms']:.1f} | {w['raw_text']} | {w['cleanup_ms']:.1f} | {w['clean_text']} | {w['total_ms']:.1f} |\n")
+        for r in timed_records:
+            f.write(f"| {r['run']} | {r['audio_duration_s']:.2f} | {r['asr_ms']:.1f} | {r['raw_text']} | {r['cleanup_ms']:.1f} | {r['clean_text']} | {r['total_ms']:.1f} |\n")
+        f.write("\n")
+
+    print(f"\n[Completed Mode asr_dictation]")
+    print(f"Saved Markdown: {md_path}")
+    print(f"Saved JSON:     {json_path}")
+    return payload_json
+
+
 def main():
-    parser = argparse.ArgumentParser(description="Latency benchmark test for dictation, commands_no_tools, commands_with_tools")
+    parser = argparse.ArgumentParser(description="Latency benchmark test for dictation, commands_no_tools, commands_with_tools, asr_dictation")
     parser.add_argument(
         "--mode",
         type=str,
-        choices=["dictation", "commands_no_tools", "commands_with_tools", "all"],
+        choices=["dictation", "commands_no_tools", "commands_with_tools", "asr_dictation", "all"],
         default="all",
         help="Benchmark mode to run (default: all)",
     )
@@ -291,6 +453,7 @@ def main():
 
     settings = load_settings()
     vertex_cfg = settings.get("vertex", {})
+    asr_cfg = settings.get("asr", {})
     key_file = (V1_DIR / vertex_cfg.get("key_file", "../vertex-key.json")).resolve()
     if not key_file.exists():
         key_file = (WORKSPACE_ROOT / "vertex-key.json").resolve()
@@ -314,6 +477,10 @@ def main():
         model_name=vertex_cfg.get("agent_model", "gemini-2.5-flash"),
         log_path=V1_DIR / "results" / "tool_calls.log",
     )
+    asr_client = IndicConformerClient(
+        endpoint=asr_cfg["endpoint"],
+        timeout_seconds=asr_cfg.get("timeout_seconds", 30),
+    )
     orchestrator = Orchestrator(
         decider=decider,
         cleanup=cleanup,
@@ -322,10 +489,17 @@ def main():
     )
 
     out_dir = V1_DIR / "results"
-    modes = ["dictation", "commands_no_tools", "commands_with_tools"] if args.mode == "all" else [args.mode]
+    audio_path = TESTS_DIR / "audio" / "namaste.wav"
+    if not audio_path.exists():
+        audio_path = WORKSPACE_ROOT / "namaste.wav"
+
+    modes = ["dictation", "commands_no_tools", "commands_with_tools", "asr_dictation"] if args.mode == "all" else [args.mode]
 
     for m in modes:
-        run_mode_latency_test(m, orchestrator, out_dir)
+        if m == "asr_dictation":
+            run_asr_dictation_latency_test(orchestrator, asr_client, audio_path, out_dir)
+        else:
+            run_mode_latency_test(m, orchestrator, out_dir)
 
 
 if __name__ == "__main__":

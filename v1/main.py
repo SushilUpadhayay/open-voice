@@ -144,7 +144,9 @@ def main():
 
     result = orchestrator.process(
         raw_text=raw_text,
-        customer_config=customer_cfg,
+        actions=customer_cfg.get("actions", False),
+        cleanup=customer_cfg.get("cleanup", True),
+        tools=customer_cfg.get("tools", True),
         asr_latency_ms=asr_latency_ms,
     )
 
@@ -161,6 +163,8 @@ def main():
 
     if result.cleaned_text:
         print(f"Cleaned Text:    {result.cleaned_text} (changed={result.cleanup_changed})")
+    if result.cleanup_discarded:
+        print("Cleanup Status:  Discarded (early command branch taken)")
     
     if result.agent_result:
         print(f"Agent Action:    {'Tool Executed' if result.agent_result.action_taken else 'No Tool Call'}")

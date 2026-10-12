@@ -14,15 +14,26 @@ from .tools import VERTEX_TOOL_DECLARATIONS, execute_dummy_tool
 @dataclass
 class AgentResult:
     reply: str
+    outcome: str  # "tool_call", "missing_detail", "no_matching_tool", "tools_disabled"
     tool_name: Optional[str] = None
     tool_args: Optional[Dict[str, Any]] = None
     tool_result: Optional[Dict[str, Any]] = None
-    action_taken: bool = False
-    clarification_asked: bool = False
-    refusal: bool = False
     tools_enabled: bool = True
     latency_ms: float = 0.0
+    tool_call_latency_ms: float = 0.0
     raw_response: Optional[str] = None
+
+    @property
+    def action_taken(self) -> bool:
+        return self.outcome == "tool_call"
+
+    @property
+    def clarification_asked(self) -> bool:
+        return self.outcome == "missing_detail"
+
+    @property
+    def refusal(self) -> bool:
+        return self.outcome == "no_matching_tool"
 
 
 SYSTEM_PROMPT_TEMPLATE = """You are System 2, a fast and helpful Nepali voice command agent.
@@ -104,12 +115,23 @@ class System2Agent:
 
     def _post(self, payload: Dict[str, Any]) -> Dict[str, Any]:
         headers = self._get_auth_header()
-        response = self.session.post(
-            self.endpoint_url,
-            headers=headers,
-            json=payload,
-            timeout=self.timeout_seconds,
-        )
+        for attempt in range(5):
+            try:
+                response = self.session.post(
+                    self.endpoint_url,
+                    headers=headers,
+                    json=payload,
+                    timeout=self.timeout_seconds,
+                )
+                if response.status_code == 429 and attempt < 4:
+                    time.sleep(2.0 * (attempt + 1))
+                    continue
+                break
+            except (requests.exceptions.RequestException, TimeoutError):
+                if attempt == 4:
+                    raise
+                time.sleep(1.0 * (attempt + 1))
+
         if response.status_code != 200:
             raise RuntimeError(
                 f"Vertex AI Agent call failed with status {response.status_code}: {response.text}"
@@ -177,7 +199,9 @@ class System2Agent:
             fn_args = fn_call.get("args", {})
 
             # Execute dummy tool
+            t_tool_0 = time.perf_counter()
             tool_result = execute_dummy_tool(fn_name, fn_args, log_path=self.log_path)
+            tool_call_latency_ms = (time.perf_counter() - t_tool_0) * 1000.0
 
             # Send functionResponse back to Gemini to get a natural Nepali reply
             followup_contents = [
@@ -212,36 +236,39 @@ class System2Agent:
             latency_ms = (time.perf_counter() - start_time) * 1000.0
             return AgentResult(
                 reply=reply_text,
+                outcome="tool_call",
                 tool_name=fn_name,
                 tool_args=fn_args,
                 tool_result=tool_result,
-                action_taken=True,
-                clarification_asked=False,
-                refusal=False,
                 tools_enabled=True,
                 latency_ms=round(latency_ms, 2),
+                tool_call_latency_ms=round(tool_call_latency_ms, 2),
                 raw_response=json.dumps(fn_call, ensure_ascii=False),
             )
 
         # Case 2: Direct text response (tools disabled, clarification needed, or refusal)
         reply_text = first_part.get("text", "").strip()
-        is_question = "?" in reply_text or "के" in reply_text or "कुन" in reply_text or "कहिले" in reply_text
-        is_refusal = (
-            "सक्दिन" in reply_text
-            or "गर्न मिल्दैन" in reply_text
-            or "उपलब्ध छैन" in reply_text
-            or "सहायता गर्न सक्दिन" in reply_text
-        )
+        if not tools_enabled:
+            outcome = "tools_disabled"
+        else:
+            is_refusal = (
+                "सक्दिन" in reply_text
+                or "गर्न मिल्दैन" in reply_text
+                or "उपलब्ध छैन" in reply_text
+                or "सहायता गर्न सक्दिन" in reply_text
+            )
+            if is_refusal:
+                outcome = "no_matching_tool"
+            else:
+                outcome = "missing_detail"
 
         latency_ms = (time.perf_counter() - start_time) * 1000.0
         return AgentResult(
             reply=reply_text,
+            outcome=outcome,
             tool_name=None,
             tool_args=None,
             tool_result=None,
-            action_taken=False,
-            clarification_asked=is_question and tools_enabled,
-            refusal=is_refusal and tools_enabled,
             tools_enabled=tools_enabled,
             latency_ms=round(latency_ms, 2),
             raw_response=reply_text,

@@ -5,6 +5,8 @@ vertex:
   decider_model: "gemini-2.5-flash"
   cleanup_model: "gemini-2.5-flash"
   agent_model: "gemini-2.5-flash"
+
+decider:
   confidence_threshold: 0.75
 
 asr:

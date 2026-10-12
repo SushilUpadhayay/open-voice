@@ -1,0 +1,234 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Open Voice V3 - Voice AI Pipeline (Nepali)</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Noto+Sans+Devanagari:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+  <div class="app-container">
+    <!-- Header -->
+    <header class="app-header">
+      <div class="logo-area">
+        <span class="logo-badge">V3 DEMO</span>
+        <h1>Open Voice Layer</h1>
+        <p class="subtitle">Nepali Modular Voice Pipeline</p>
+      </div>
+    </header>
+
+    <!-- Control Switches Panel -->
+    <section class="card switches-panel">
+      <div class="switches-grid">
+        <label class="switch-item">
+          <div class="switch-label">
+            <span class="switch-title">Actions</span>
+            <span class="switch-desc">System 2 Decider & Agent</span>
+          </div>
+          <input type="checkbox" id="switch-actions" checked>
+          <span class="slider"></span>
+        </label>
+
+        <label class="switch-item">
+          <div class="switch-label">
+            <span class="switch-title">Cleanup</span>
+            <span class="switch-desc">Grammar & Disfluency Filter</span>
+          </div>
+          <input type="checkbox" id="switch-cleanup" checked>
+          <span class="slider"></span>
+        </label>
+
+        <label class="switch-item">
+          <div class="switch-label">
+            <span class="switch-title">Tools</span>
+            <span class="switch-desc">Email, Calendar & Reminder</span>
+          </div>
+          <input type="checkbox" id="switch-tools" checked>
+          <span class="slider"></span>
+        </label>
+      </div>
+      <div class="mode-indicator" id="mode-indicator">
+        <span class="mode-dot"></span>
+        <span id="mode-text">Active Mode: Full command assistant with tools</span>
+      </div>
+    </section>
+
+    <!-- Main Input Section: Microphone & Text Fallback -->
+    <section class="card input-section">
+      <div class="mic-container">
+        <button id="mic-btn" class="mic-button" aria-label="Microphone">
+          <div class="mic-icon-wrapper">
+            <svg class="mic-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <path d="M12 2a3 3 0 0 0-3 3v7a3 3 0 0 0 6 0V5a3 3 0 0 0-3-3z"/>
+              <path d="M19 10v2a7 7 0 0 1-14 0v-2"/>
+              <line x1="12" y1="19" x2="12" y2="23"/>
+              <line x1="8" y1="23" x2="16" y2="23"/>
+            </svg>
+          </div>
+          <div class="pulse-ring"></div>
+        </button>
+        <div class="mic-status" id="mic-status">Click microphone to speak</div>
+        <div class="audio-visualizer" id="visualizer-container">
+          <div class="visualizer-bar"></div>
+          <div class="visualizer-bar"></div>
+          <div class="visualizer-bar"></div>
+          <div class="visualizer-bar"></div>
+          <div class="visualizer-bar"></div>
+        </div>
+      </div>
+
+      <div class="divider">
+        <span>OR TYPE A SENTENCE</span>
+      </div>
+
+      <form id="text-form" class="text-input-form">
+        <div class="input-wrapper">
+          <input type="text" id="text-input" placeholder="e.g. भोलि बिहान दश बजे बैठक राख..." autocomplete="off">
+          <button type="submit" id="send-btn" class="send-button">
+            <span>Send</span>
+            <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2">
+              <line x1="22" y1="2" x2="11" y2="13"/>
+              <polygon points="22 2 15 22 11 13 2 9 22 2"/>
+            </svg>
+          </button>
+        </div>
+      </form>
+    </section>
+
+    <!-- Live Transcript & Processing Status -->
+    <section class="card transcript-section" id="transcript-section">
+      <div class="section-header">
+        <h2>Transcripts</h2>
+        <span class="branch-badge" id="branch-badge">Waiting</span>
+      </div>
+
+      <div class="transcript-box">
+        <div class="transcript-group">
+          <span class="transcript-label">Raw Speech (ASR):</span>
+          <p id="raw-transcript" class="transcript-text">—</p>
+        </div>
+        <div class="transcript-group">
+          <span class="transcript-label">Cleaned Text (Dictation):</span>
+          <p id="cleaned-transcript" class="transcript-text highlight">—</p>
+        </div>
+      </div>
+    </section>
+
+    <!-- Result Card & Spoken Voice Reply -->
+    <section class="card result-section" id="result-section">
+      <div class="section-header">
+        <h2>Outcome Card</h2>
+        <div class="card-badges">
+          <span class="status-chip" id="card-badge">—</span>
+        </div>
+      </div>
+
+      <!-- Dynamic Card Container -->
+      <div id="card-container" class="card-display-container">
+        <div class="empty-state">
+          <p>Speak using the microphone or type a sentence above.</p>
+        </div>
+      </div>
+
+      <!-- Spoken Reply Audio Player Line -->
+      <div id="reply-box" class="reply-box hidden">
+        <div class="reply-content">
+          <div class="reply-speaker-icon">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"/>
+              <path d="M19.07 4.93a10 10 0 0 1 0 14.14M15.54 8.46a5 5 0 0 1 0 7.07"/>
+            </svg>
+          </div>
+          <div class="reply-text-area">
+            <span class="reply-tag">Assistant Reply:</span>
+            <p id="reply-text" class="reply-text">—</p>
+          </div>
+        </div>
+        <div class="audio-controls">
+          <button id="tts-play-btn" class="play-btn" title="Play Voice Reply">
+            <svg id="play-icon" viewBox="0 0 24 24" fill="currentColor">
+              <polygon points="5 3 19 12 5 21 5 3"/>
+            </svg>
+            <span id="play-btn-text">Play Audio</span>
+          </button>
+          <span id="tts-time-tag" class="tts-time-tag"></span>
+        </div>
+      </div>
+    </section>
+
+    <!-- Timing Panel -->
+    <section class="card timing-section">
+      <div class="section-header">
+        <h2>Timing Panel</h2>
+        <span class="total-latency-chip" id="total-latency-chip">Total Latency: 0.0 ms</span>
+      </div>
+
+      <div class="table-container">
+        <table class="timing-table">
+          <thead>
+            <tr>
+              <th>Pipeline Step</th>
+              <th>Status</th>
+              <th>Latency</th>
+            </tr>
+          </thead>
+          <tbody id="timing-table-body">
+            <tr>
+              <td><strong>ASR (Indic Conformer)</strong></td>
+              <td><span class="status-pill status-ready">Ready</span></td>
+              <td>0.0 ms</td>
+            </tr>
+            <tr>
+              <td><strong>Decider (Gemini)</strong></td>
+              <td><span class="status-pill status-ready">Ready</span></td>
+              <td>0.0 ms</td>
+            </tr>
+            <tr>
+              <td><strong>Cleanup (Gemini)</strong></td>
+              <td><span class="status-pill status-ready">Ready</span></td>
+              <td>0.0 ms</td>
+            </tr>
+            <tr>
+              <td><strong>Agent (System 2)</strong></td>
+              <td><span class="status-pill status-ready">Ready</span></td>
+              <td>0.0 ms</td>
+            </tr>
+            <tr>
+              <td><strong>Tool Execution</strong></td>
+              <td><span class="status-pill status-ready">Ready</span></td>
+              <td>0.00 ms</td>
+            </tr>
+            <tr>
+              <td><strong>TTS (Vertex Voice)</strong></td>
+              <td><span class="status-pill status-ready">Ready</span></td>
+              <td>0.0 ms</td>
+            </tr>
+            <tr class="total-row">
+              <td><strong>Pipeline Total</strong></td>
+              <td><strong>Final</strong></td>
+              <td id="table-total-ms"><strong>0.0 ms</strong></td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </section>
+
+    <!-- Dummy Tool Calls Log -->
+    <section class="card tool-log-section">
+      <div class="section-header">
+        <h2>Recent Tool Executions</h2>
+        <button id="refresh-log-btn" class="refresh-btn" title="Refresh Log">Refresh</button>
+      </div>
+      <div id="tool-log-container" class="tool-log-container">
+        <p class="empty-log-text">No tool calls logged yet.</p>
+      </div>
+    </section>
+  </div>
+
+  <audio id="audio-player" style="display:none;"></audio>
+  <script src="/static/app.js"></script>
+</body>
+</html>

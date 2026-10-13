@@ -1,0 +1,4 @@
+name: "customer_c"
+actions: true
+cleanup: true
+tools: false

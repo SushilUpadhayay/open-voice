@@ -14,3 +14,8 @@ V1/results/
 __pycache__/
 *.py[cod]
 /graphify-out
+/laya
+/run.txt
+/.gemini-mcp-proxy
+.myvenv/
+/.venv/

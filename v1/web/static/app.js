@@ -4,12 +4,14 @@ document.addEventListener("DOMContentLoaded", () => {
   const micBtn = document.getElementById("mic-btn");
   const micStatus = document.getElementById("mic-status");
   const visualizer = document.getElementById("visualizer-container");
+  const visualizerBars = document.querySelectorAll(".visualizer-bar");
   const textForm = document.getElementById("text-form");
   const textInput = document.getElementById("text-input");
 
   const switchActions = document.getElementById("switch-actions");
   const switchCleanup = document.getElementById("switch-cleanup");
   const switchTools = document.getElementById("switch-tools");
+  const switchTTS = document.getElementById("switch-tts");
   const modeText = document.getElementById("mode-text");
 
   const branchBadge = document.getElementById("branch-badge");
@@ -33,35 +35,49 @@ document.addEventListener("DOMContentLoaded", () => {
   let isRecording = false;
   let audioContext = null;
   let mediaStream = null;
+  let analyser = null;
   let processorNode = null;
   let pcmData = [];
   let silenceTimer = null;
   let speechStarted = false;
+  let animFrameId = null;
   let lastAudioUrl = null;
+  let currentReplyText = "";
 
-  // 1. Update Mode Summary Text (in English)
+  // 1. Customer Mode Indicator (Section 8 of V3 Plan)
   function updateModeIndicator() {
     const act = switchActions.checked;
     const cln = switchCleanup.checked;
     const tls = switchTools.checked;
+    const tts = switchTTS ? switchTTS.checked : true;
 
     let desc = "";
-    if (!act) {
-      desc = cln ? "Dictation only (Cleanup enabled, decider skipped)" : "Raw dictation (Cleanup disabled)";
-    } else if (!tls) {
-      desc = "Command assistant (Tools disabled, speech reply only)";
+    if (!act && cln) {
+      desc = "Actions off, Cleanup on (Pure dictation, cleaned text only, decider skipped)";
+    } else if (!act && !cln) {
+      desc = "Actions off, Cleanup off (Raw dictation as-is, cleanup & decider skipped)";
+    } else if (act && !tls && cln) {
+      desc = "Actions on, Tools off, Cleanup on (Commands recognized, words reply only, no tool call)";
+    } else if (act && tls && cln) {
+      desc = "Actions on, Tools on, Cleanup on (Full command assistant, dummy tools & cards)";
+    } else if (act && !cln) {
+      desc = "Actions on, Cleanup off (Raw text sent directly to decider/agent)";
     } else {
-      desc = "Full command assistant with tools & cards";
+      desc = "Custom configuration";
     }
-    modeText.textContent = `Mode: ${desc}`;
+    if (!tts) {
+      desc += " [TTS Muted]";
+    }
+    modeText.textContent = `Active Mode: ${desc}`;
   }
 
   switchActions.addEventListener("change", updateModeIndicator);
   switchCleanup.addEventListener("change", updateModeIndicator);
   switchTools.addEventListener("change", updateModeIndicator);
+  if (switchTTS) switchTTS.addEventListener("change", updateModeIndicator);
   updateModeIndicator();
 
-  // 2. Microphone Recording with Web Audio API (16kHz Mono WAV + Silence Detection)
+  // 2. Microphone Capture with Real-Time Audio Meter & Silence Auto-Stop
   micBtn.addEventListener("click", () => {
     if (isRecording) {
       stopRecording();
@@ -85,10 +101,14 @@ document.addEventListener("DOMContentLoaded", () => {
           sampleRate: 16000,
           echoCancellation: true,
           noiseSuppression: true,
+          autoGainControl: true,
         },
       });
 
       const source = audioContext.createMediaStreamSource(mediaStream);
+      analyser = audioContext.createAnalyser();
+      analyser.fftSize = 64;
+
       processorNode = audioContext.createScriptProcessor(4096, 1, 1);
 
       processorNode.onaudioprocess = (e) => {
@@ -96,41 +116,62 @@ document.addEventListener("DOMContentLoaded", () => {
         const channel = e.inputBuffer.getChannelData(0);
         pcmData.push(new Float32Array(channel));
 
-        // Silence / Voice Activity Detection
+        // Volume Calculation
         let sum = 0;
         for (let i = 0; i < channel.length; i++) {
           sum += channel[i] * channel[i];
         }
         const rms = Math.sqrt(sum / channel.length);
 
-        if (rms > 0.03) {
+        // Voice Activity Detection & Silence Auto-Stop (~1.2s silence)
+        if (rms > 0.025) {
           speechStarted = true;
+          micStatus.textContent = "Speaking detected... (Listening)";
           if (silenceTimer) {
             clearTimeout(silenceTimer);
             silenceTimer = null;
           }
         } else if (speechStarted) {
           if (!silenceTimer) {
-            // ~1.2s silence threshold
             silenceTimer = setTimeout(() => {
-              console.log("[Mic] Auto-stopping on 1.2s silence");
+              console.log("[Mic] Auto-stopping after 1.2s silence");
               stopRecording();
             }, 1200);
           }
         }
       };
 
-      source.connect(processorNode);
+      source.connect(analyser);
+      analyser.connect(processorNode);
       processorNode.connect(audioContext.destination);
 
       isRecording = true;
       micBtn.classList.add("recording");
       visualizer.classList.add("active");
       micStatus.textContent = "Listening... speak now";
+
+      // Live Visualizer loop
+      updateVisualizerMeter();
     } catch (err) {
       console.error("Mic access error:", err);
       alert("Microphone permission denied or not supported: " + err.message);
     }
+  }
+
+  function updateVisualizerMeter() {
+    if (!isRecording || !analyser) return;
+
+    const freqData = new Uint8Array(analyser.frequencyBinCount);
+    analyser.getByteFrequencyData(freqData);
+
+    // Drive the 5 bars with live frequency amplitudes
+    for (let i = 0; i < visualizerBars.length; i++) {
+      const val = freqData[i * 2] || 0;
+      const height = Math.max(6, Math.min(26, Math.round((val / 255) * 26)));
+      visualizerBars[i].style.height = `${height}px`;
+    }
+
+    animFrameId = requestAnimationFrame(updateVisualizerMeter);
   }
 
   function stopRecording() {
@@ -141,9 +182,14 @@ document.addEventListener("DOMContentLoaded", () => {
       clearTimeout(silenceTimer);
       silenceTimer = null;
     }
+    if (animFrameId) {
+      cancelAnimationFrame(animFrameId);
+      animFrameId = null;
+    }
 
     micBtn.classList.remove("recording");
     visualizer.classList.remove("active");
+    visualizerBars.forEach((bar) => (bar.style.height = "6px"));
     micStatus.textContent = "Processing audio...";
 
     if (mediaStream) {
@@ -168,8 +214,8 @@ document.addEventListener("DOMContentLoaded", () => {
       offset += chunk.length;
     }
 
-    if (totalLength < 4000) {
-      micStatus.textContent = "Audio too short. Please try again.";
+    if (totalLength < 3200) {
+      micStatus.textContent = "Audio too short. Please speak again.";
       return;
     }
 
@@ -182,34 +228,20 @@ document.addEventListener("DOMContentLoaded", () => {
     const buffer = new ArrayBuffer(44 + samples.length * 2);
     const view = new DataView(buffer);
 
-    /* RIFF identifier */
     writeString(view, 0, "RIFF");
-    /* file length */
     view.setUint32(4, 36 + samples.length * 2, true);
-    /* RIFF type */
     writeString(view, 8, "WAVE");
-    /* format chunk identifier */
     writeString(view, 12, "fmt ");
-    /* format chunk length */
     view.setUint32(16, 16, true);
-    /* sample format (raw PCM) */
-    view.setUint16(20, 1, true);
-    /* channel count (mono) */
-    view.setUint16(22, 1, true);
-    /* sample rate */
+    view.setUint16(20, 1, true); // PCM
+    view.setUint16(22, 1, true); // mono
     view.setUint32(24, sampleRate, true);
-    /* byte rate (sampleRate * 2) */
     view.setUint32(28, sampleRate * 2, true);
-    /* block align */
     view.setUint16(32, 2, true);
-    /* bits per sample */
     view.setUint16(34, 16, true);
-    /* data chunk identifier */
     writeString(view, 36, "data");
-    /* data chunk length */
     view.setUint32(40, samples.length * 2, true);
 
-    // Float32 to Int16 PCM
     let offset = 44;
     for (let i = 0; i < samples.length; i++, offset += 2) {
       const s = Math.max(-1, Math.min(1, samples[i]));
@@ -228,8 +260,13 @@ document.addEventListener("DOMContentLoaded", () => {
   // 3. Audio & Text Pipeline Requests
   async function sendAudioRequest(blob) {
     const clientStartTime = performance.now();
+    rawTranscript.textContent = "Transcribing audio clip...";
+    cleanedTranscript.textContent = "Waiting for cleanup...";
+    branchBadge.textContent = "Processing...";
+    branchBadge.className = "branch-badge";
+
     const formData = new FormData();
-    formData.append("audio", blob, "recording.wav");
+    formData.append("audio", blob, "speech.wav");
     formData.append("actions", switchActions.checked);
     formData.append("cleanup", switchCleanup.checked);
     formData.append("tools", switchTools.checked);
@@ -245,10 +282,12 @@ document.addEventListener("DOMContentLoaded", () => {
       }
       const data = await resp.json();
       const clientTotalMs = performance.now() - clientStartTime;
-      renderResult(data, clientTotalMs);
+      renderResult(data, clientTotalMs, clientStartTime);
       micStatus.textContent = "Ready! Click mic to speak again.";
     } catch (err) {
       console.error(err);
+      rawTranscript.textContent = "—";
+      cleanedTranscript.textContent = "—";
       micStatus.textContent = "Error: " + err.message;
     }
   }
@@ -259,6 +298,10 @@ document.addEventListener("DOMContentLoaded", () => {
     if (!text) return;
 
     const clientStartTime = performance.now();
+    rawTranscript.textContent = text;
+    cleanedTranscript.textContent = "Processing...";
+    branchBadge.textContent = "Processing...";
+    branchBadge.className = "branch-badge";
     micStatus.textContent = "Processing text...";
 
     try {
@@ -280,7 +323,7 @@ document.addEventListener("DOMContentLoaded", () => {
 
       const data = await resp.json();
       const clientTotalMs = performance.now() - clientStartTime;
-      renderResult(data, clientTotalMs);
+      renderResult(data, clientTotalMs, clientStartTime);
       micStatus.textContent = "Ready! Click mic to speak again.";
       textInput.value = "";
     } catch (err) {
@@ -289,11 +332,15 @@ document.addEventListener("DOMContentLoaded", () => {
     }
   });
 
-  // 4. Render Results to UI
-  function renderResult(data, clientTotalMs) {
-    // Transcripts
+  // 4. Render Results to UI (V3c specification)
+  function renderResult(data, clientTotalMs, clientStartTime) {
+    // Transcript area: raw text, then cleaned text
     rawTranscript.textContent = data.raw_text || "—";
-    cleanedTranscript.textContent = data.cleaned_text || "—";
+    if (data.switches && !data.switches.cleanup) {
+      cleanedTranscript.textContent = `${data.raw_text} (Cleanup off)`;
+    } else {
+      cleanedTranscript.textContent = data.cleaned_text || data.raw_text || "—";
+    }
 
     // Branch badge
     if (data.branch === "command") {
@@ -304,22 +351,35 @@ document.addEventListener("DOMContentLoaded", () => {
       branchBadge.className = "branch-badge dictation";
     }
 
-    // Outcome Card
+    // Outcome Card (rendered immediately)
     renderCard(data.card);
 
     // Reply Box & Audio TTS
+    currentReplyText = data.reply_text || "";
     if (data.reply_text) {
       replyBox.classList.remove("hidden");
       replyTextEl.textContent = data.reply_text;
-      fetchAndPlayTTS(data.reply_text);
+      ttsTimeTag.textContent = "";
+      if (lastAudioUrl) {
+        URL.revokeObjectURL(lastAudioUrl);
+        lastAudioUrl = null;
+      }
+      audioPlayer.src = "";
     } else {
       replyBox.classList.add("hidden");
+      currentReplyText = "";
     }
 
-    // Timing Table
-    renderTimingTable(data.timings, clientTotalMs);
+    // Timing Table matching customer switches & TTS state
+    const ttsEnabled = switchTTS ? switchTTS.checked : true;
+    renderTimingTable(data.timings, data.switches, clientTotalMs, !!data.reply_text, ttsEnabled);
 
-    // Refresh Tool Log
+    // If TTS is enabled and reply text exists, fetch and play voice synthesis
+    if (data.reply_text && ttsEnabled) {
+      fetchAndPlayTTS(data.reply_text, clientStartTime);
+    }
+
+    // Refresh Tool Log (Section 9: last 5 calls refreshed after each command)
     fetchToolLog();
   }
 
@@ -445,10 +505,28 @@ document.addEventListener("DOMContentLoaded", () => {
     }
   }
 
-  // 5. TTS Voice Synthesis & Playback
-  async function fetchAndPlayTTS(text) {
-    ttsTimeTag.textContent = "Generating speech...";
+  // 5. TTS Voice Synthesis & Playback (Section 9 of V3 Plan)
+  async function fetchAndPlayTTS(text, clientStartTime) {
+    if (!text) return;
+    ttsTimeTag.textContent = "Synthesizing voice...";
     const t0 = performance.now();
+
+    const ttsRow = document.getElementById("timing-row-tts");
+    if (ttsRow) {
+      ttsRow.innerHTML = `
+        <td><strong>TTS (Vertex Voice)</strong></td>
+        <td><span class="status-pill status-waited">Synthesizing</span></td>
+        <td>...</td>
+      `;
+    }
+    const ttfaRow = document.getElementById("timing-row-ttfa");
+    if (ttfaRow) {
+      ttfaRow.innerHTML = `
+        <td><strong>Time to First Audio</strong></td>
+        <td><span class="status-pill status-waited">Waiting</span></td>
+        <td id="table-ttfa-ms">...</td>
+      `;
+    }
 
     try {
       const resp = await fetch("/api/tts", {
@@ -467,10 +545,15 @@ document.addEventListener("DOMContentLoaded", () => {
       lastAudioUrl = URL.createObjectURL(audioBlob);
 
       audioPlayer.src = lastAudioUrl;
-      audioPlayer.play();
+      const playPromise = audioPlayer.play();
+      if (playPromise !== undefined) {
+        playPromise.catch((e) => {
+          console.warn("Autoplay interrupted or blocked:", e);
+        });
+      }
 
-      // Update TTS row in timing table
-      const ttsRow = document.getElementById("timing-row-tts");
+      const ttfa = clientStartTime ? Math.round(performance.now() - clientStartTime) : Math.round(ttsLatency);
+
       if (ttsRow) {
         ttsRow.innerHTML = `
           <td><strong>TTS (Vertex Voice)</strong></td>
@@ -478,61 +561,146 @@ document.addEventListener("DOMContentLoaded", () => {
           <td>${ttsLatency} ms</td>
         `;
       }
+      if (ttfaRow) {
+        ttfaRow.innerHTML = `
+          <td><strong>Time to First Audio</strong></td>
+          <td><span class="status-pill status-waited">Playing</span></td>
+          <td id="table-ttfa-ms">${ttfa} ms</td>
+        `;
+      }
     } catch (e) {
       console.warn("TTS playback error:", e);
       ttsTimeTag.textContent = "Voice unavailable";
+      if (ttsRow) {
+        ttsRow.innerHTML = `
+          <td><strong>TTS (Vertex Voice)</strong></td>
+          <td><span class="status-pill status-discarded">Failed</span></td>
+          <td>—</td>
+        `;
+      }
+      if (ttfaRow) {
+        ttfaRow.innerHTML = `
+          <td><strong>Time to First Audio</strong></td>
+          <td><span class="status-pill status-discarded">Failed</span></td>
+          <td id="table-ttfa-ms">—</td>
+        `;
+      }
     }
   }
 
   ttsPlayBtn.addEventListener("click", () => {
-    if (audioPlayer.src) {
+    if (audioPlayer.src && audioPlayer.src !== window.location.href) {
       audioPlayer.currentTime = 0;
       audioPlayer.play();
+    } else if (currentReplyText) {
+      fetchAndPlayTTS(currentReplyText, performance.now());
     }
   });
 
-  // 6. Timing Table
-  function renderTimingTable(timings, clientTotalMs) {
+  // 6. Timing Table (Refined for Section 8 customer switch expectations & TTFA)
+  function renderTimingTable(timings, switches, clientTotalMs, hasReplyText, ttsEnabled) {
     if (!timings) return;
 
     totalLatencyChip.textContent = `Total Latency: ${timings.total_ms || clientTotalMs.toFixed(1)} ms`;
 
+    // ASR
     const asrPill = timings.asr_ms > 0 ? `<span class="status-pill status-waited">Transcribed</span>` : `<span class="status-pill status-skipped">Skipped (Text)</span>`;
-    const deciderPill = timings.decider_ms > 0 ? `<span class="status-pill status-waited">Waited</span>` : `<span class="status-pill status-skipped">Skipped</span>`;
-    const cleanupPill = timings.cleanup_discarded ? `<span class="status-pill status-discarded">Discarded (0ms)</span>` : (timings.cleanup_ms > 0 ? `<span class="status-pill status-waited">Waited</span>` : `<span class="status-pill status-skipped">Skipped</span>`);
-    const agentPill = timings.agent_ms > 0 ? `<span class="status-pill status-waited">Waited</span>` : `<span class="status-pill status-skipped">Skipped</span>`;
-    const toolPill = timings.tool_call_ms > 0 ? `<span class="status-pill status-waited">Executed</span>` : `<span class="status-pill status-ready">—</span>`;
+    const asrTime = timings.asr_ms > 0 ? `${timings.asr_ms} ms` : `—`;
+
+    // Decider: if Actions off -> no decider time in panel
+    let deciderPill = `<span class="status-pill status-skipped">Skipped (Actions Off)</span>`;
+    let deciderTime = `—`;
+    if (switches && switches.actions) {
+      deciderPill = `<span class="status-pill status-waited">Waited</span>`;
+      deciderTime = `${timings.decider_ms} ms`;
+    }
+
+    // Cleanup: if Cleanup off -> no cleanup time in panel
+    let cleanupPill = `<span class="status-pill status-skipped">Disabled (Off)</span>`;
+    let cleanupTime = `—`;
+    if (switches && switches.cleanup) {
+      if (timings.cleanup_discarded) {
+        cleanupPill = `<span class="status-pill status-discarded">Discarded (0ms active)</span>`;
+        cleanupTime = `0.0 ms`;
+      } else {
+        cleanupPill = `<span class="status-pill status-waited">Waited</span>`;
+        cleanupTime = `${timings.cleanup_ms} ms`;
+      }
+    }
+
+    // Agent
+    let agentPill = `<span class="status-pill status-skipped">Skipped (Dictation)</span>`;
+    let agentTime = `—`;
+    if (timings.agent_ms > 0) {
+      agentPill = `<span class="status-pill status-waited">Waited</span>`;
+      agentTime = `${timings.agent_ms} ms`;
+    }
+
+    // Tools
+    let toolPill = `<span class="status-pill status-ready">—</span>`;
+    let toolTime = `—`;
+    if (switches && switches.tools && timings.tool_call_ms > 0) {
+      toolPill = `<span class="status-pill status-waited">Executed</span>`;
+      toolTime = `${timings.tool_call_ms} ms`;
+    } else if (switches && !switches.tools) {
+      toolPill = `<span class="status-pill status-skipped">Tools Disabled</span>`;
+    }
+
+    // TTS & TTFA initial state in table
+    let ttsPill = `<span class="status-pill status-skipped">Skipped (Dictation)</span>`;
+    let ttsTime = `—`;
+    let ttfaPill = `<span class="status-pill status-skipped">Skipped</span>`;
+    let ttfaTime = `—`;
+
+    if (hasReplyText) {
+      if (ttsEnabled) {
+        ttsPill = `<span class="status-pill status-waited">Synthesizing...</span>`;
+        ttsTime = `...`;
+        ttfaPill = `<span class="status-pill status-waited">Waiting...</span>`;
+        ttfaTime = `...`;
+      } else {
+        ttsPill = `<span class="status-pill status-skipped">Disabled (TTS Off)</span>`;
+        ttsTime = `—`;
+        ttfaPill = `<span class="status-pill status-skipped">Disabled</span>`;
+        ttfaTime = `—`;
+      }
+    }
 
     timingTableBody.innerHTML = `
       <tr>
         <td><strong>ASR (Indic Conformer)</strong></td>
         <td>${asrPill}</td>
-        <td>${timings.asr_ms} ms</td>
+        <td>${asrTime}</td>
       </tr>
       <tr>
         <td><strong>Decider (Gemini)</strong></td>
         <td>${deciderPill}</td>
-        <td>${timings.decider_ms} ms</td>
+        <td>${deciderTime}</td>
       </tr>
       <tr>
         <td><strong>Cleanup (Gemini)</strong></td>
         <td>${cleanupPill}</td>
-        <td>${timings.cleanup_ms} ms</td>
+        <td>${cleanupTime}</td>
       </tr>
       <tr>
         <td><strong>Agent (System 2)</strong></td>
         <td>${agentPill}</td>
-        <td>${timings.agent_ms} ms</td>
+        <td>${agentTime}</td>
       </tr>
       <tr>
         <td><strong>Tool Execution</strong></td>
         <td>${toolPill}</td>
-        <td>${timings.tool_call_ms} ms</td>
+        <td>${toolTime}</td>
       </tr>
       <tr id="timing-row-tts">
         <td><strong>TTS (Vertex Voice)</strong></td>
-        <td><span class="status-pill status-ready">Ready</span></td>
-        <td>—</td>
+        <td>${ttsPill}</td>
+        <td>${ttsTime}</td>
+      </tr>
+      <tr id="timing-row-ttfa">
+        <td><strong>Time to First Audio</strong></td>
+        <td>${ttfaPill}</td>
+        <td id="table-ttfa-ms">${ttfaTime}</td>
       </tr>
       <tr class="total-row">
         <td><strong>Pipeline Total</strong></td>

@@ -49,6 +49,15 @@
           <input type="checkbox" id="switch-tools" checked>
           <span class="slider"></span>
         </label>
+
+        <label class="switch-item">
+          <div class="switch-label">
+            <span class="switch-title">TTS (Voice)</span>
+            <span class="switch-desc">Spoken Reply Synthesis</span>
+          </div>
+          <input type="checkbox" id="switch-tts" checked>
+          <span class="slider"></span>
+        </label>
       </div>
       <div class="mode-indicator" id="mode-indicator">
         <span class="mode-dot"></span>
@@ -206,6 +215,11 @@
               <td><span class="status-pill status-ready">Ready</span></td>
               <td>0.0 ms</td>
             </tr>
+            <tr id="timing-row-ttfa">
+              <td><strong>Time to First Audio</strong></td>
+              <td><span class="status-pill status-ready">Ready</span></td>
+              <td id="table-ttfa-ms">—</td>
+            </tr>
             <tr class="total-row">
               <td><strong>Pipeline Total</strong></td>
               <td><strong>Final</strong></td>
@@ -219,7 +233,7 @@
     <!-- Dummy Tool Calls Log -->
     <section class="card tool-log-section">
       <div class="section-header">
-        <h2>Recent Tool Executions</h2>
+        <h2>Recent Tool Executions (Last 5)</h2>
         <button id="refresh-log-btn" class="refresh-btn" title="Refresh Log">Refresh</button>
       </div>
       <div id="tool-log-container" class="tool-log-container">

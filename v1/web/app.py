@@ -258,9 +258,9 @@ async def synthesize_speech(req: TTSRequest):
 
 
 @app.get("/api/tools/log")
-async def get_tool_log(limit: int = 20):
+async def get_tool_log(limit: int = 5):
     """
-    Returns recent dummy tool calls logged in results/tool_calls.log.
+    Returns the last 5 dummy tool calls logged in results/tool_calls.log.
     """
     if not tool_log_path.exists():
         return {"logs": []}

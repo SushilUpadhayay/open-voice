@@ -1,0 +1,27 @@
+# v2 Streaming Dictation Configuration
+
+server:
+  host: "127.0.0.1"
+  port: 8001
+
+gemini:
+  # Vertex AI config (uses root vertex-key.json if found)
+  project_id: "tpu-project-235909"
+  region: "asia-south1"
+  key_file: "../vertex-key.json"
+  model_name: "gemini-2.5-flash"
+  timeout_seconds: 15
+  # Optional: Direct Google AI Studio API Key (if set, takes precedence over Vertex)
+  api_key: ""
+
+asr:
+  endpoint: "http://45.115.219.97:20009/indic/transcribe/"
+  timeout_seconds: 20
+  sample_rate: 16000
+
+dictation:
+  word_threshold: 5             # Trigger chunk when >= 5 words
+  silence_pause_ms: 300         # Or when silence pause > 300ms
+  enable_heuristics: true       # 0ms bypass for already clean fragments
+  max_context_words: 15         # Prior context passed to in-flight Gemini calls
+  language: "ne"                # "ne" for Nepali, "en" for English, "auto" for auto

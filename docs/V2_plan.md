@@ -39,32 +39,49 @@
 ## 3. Flow
 
 ```
- text or wav -> (ASR) -> raw text
-                            |
-        orchestrator reads customer config
-                            |
-          +-----------------+-----------------+
-    DECIDER (Gemini)                   CLEANUP (Gemini)
-          +-----------------+-----------------+
-                            |
-                  orchestrator branches
-             +--------------+--------------+
-        dictation                      command
-      print clean text                    |
-                              SYSTEM 2 AGENT (Gemini)
-                              input: raw text (or cleaned, from the test)
-                              today's date and time added by code
-                                          |
-                          +---------------+---------------+
-                      tools ON                       tools OFF
-                  call dummy tool                 no tool call
-                  write Nepali reply              write Nepali reply that
-                                                  says what it would do
+ 1. INPUT: text or wav -> (ASR) -> raw Nepali text
+                                       |
+ 2. PARALLEL PROCESSING: Orchestrator reads switches (actions, cleanup, tools)
+            +--------------------------+--------------------------+
+     (actions enabled?)                                    (cleanup enabled?)
+            |                                                      |
+      yes: Gemini Decider                                    yes: Gemini Cleanup
+      no:  Skip (result = dictation)                         no:  Skip (use raw text)
+            |                                                      |
+ 3. EARLY BRANCHING: Branch as soon as Decider answers             |
+            |                                                      |
+     is confident command? (command & conf >= 0.75)                |
+       /           \                                               |
+     YES            NO --------------------------------------------+
+      |              |                                             |
+  SYSTEM 2        SYSTEM 1: DICTATION (Single unified exit)        |
+  COMMAND         - Wait for cleanup result (or raw if cleanup off)|
+  ASSISTANT       - Path for: dictation, unclear, low-conf, or     |
+  - Input: raw text          actions off                           |
+  - Do NOT wait   - Print text                                     |
+    for cleanup                                                    |
+    (cleanup discarded)                                            |
+  - Python injects date/time/timezone                              |
+      |                                                            |
+  +---+-------------------------------+                            |
+  |                                   |                            |
+tools ON                           tools OFF                       |
+Outcome:                           No tool call                    |
+1. tool call -> dummy tool, log,   Explain in Nepali what          |
+   write short reply               assistant would do              |
+2. missing detail -> ask question                                  |
+3. no tool -> polite refusal                                       |
+  |                                                                |
+Print final agent output                                           |
 ```
 
 Rules:
 
-- Everything from V1 still applies (actions off, cleanup off, unclear goes to dictation).
+- Dictation has one exit: actions off skips decider, result is dictation; unclear and low confidence also exit through dictation.
+- The orchestrator reads only switches (actions, cleanup, tools), never customer names.
+- Cleanup off means raw text is used.
+- Branch as soon as decider answers. If confident command, go straight to agent and discard cleanup. If not confident command, wait for cleanup.
+- The agent returns one of three outcomes when tools are on: tool call, short clarifying question, or polite refusal. With tools off, agent only explains in Nepali what it would do.
 - The agent gets today's date, the weekday and the time zone from the code, never from the model. It turns relative words into exact dates only with that information.
 - If the agent cannot find a tool for the request, it says so in Nepali and does not make one up.
 - If a needed argument is missing (no recipient, no time), the agent asks one short question instead of guessing.

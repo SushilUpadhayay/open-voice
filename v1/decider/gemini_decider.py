@@ -141,7 +141,7 @@ class GeminiDecider(Decider):
         start_time = time.perf_counter()
         response = None
         network_ms = 0.0
-        for attempt in range(2):
+        for attempt in range(5):
             try:
                 net_start = time.perf_counter()
                 response = self.session.post(
@@ -151,11 +151,14 @@ class GeminiDecider(Decider):
                     timeout=self.timeout_seconds,
                 )
                 network_ms = (time.perf_counter() - net_start) * 1000.0
+                if response.status_code == 429 and attempt < 4:
+                    time.sleep(2.0 * (attempt + 1))
+                    continue
                 break
             except (requests.exceptions.RequestException, TimeoutError):
-                if attempt == 1:
+                if attempt == 4:
                     raise
-                time.sleep(1.0)
+                time.sleep(1.0 * (attempt + 1))
 
 
         latency_ms = (time.perf_counter() - start_time) * 1000.0

@@ -134,6 +134,10 @@ def run_test_suite(
     avg_cleanup_auth_ms = sum(r["cleanup_auth_ms"] for r in results_pass1) / total if total > 0 else 0.0
     avg_cleanup_net_ms = sum(r["cleanup_network_ms"] for r in results_pass1) / total if total > 0 else 0.0
     avg_total_ms = sum(r["total_ms"] for r in results_pass1) / total if total > 0 else 0.0
+    cmd_latencies = [r["total_ms"] for r in results_pass1 if r["expected"] == "command"]
+    dict_latencies = [r["total_ms"] for r in results_pass1 if r["expected"] == "dictation"]
+    avg_cmd_ms = sum(cmd_latencies) / len(cmd_latencies) if cmd_latencies else 0.0
+    avg_dict_ms = sum(dict_latencies) / len(dict_latencies) if dict_latencies else 0.0
 
     # Order Sensitivity
     order_flips = 0
@@ -175,6 +179,8 @@ def run_test_suite(
             "cleanup_auth": round(avg_cleanup_auth_ms, 1),
             "cleanup_network": round(avg_cleanup_net_ms, 1),
             "total": round(avg_total_ms, 1),
+            "command_inputs_avg": round(avg_cmd_ms, 1),
+            "dictation_inputs_avg": round(avg_dict_ms, 1),
         },
         "order_sensitivity": {
             "tested": bool(results_pass2),
@@ -224,7 +230,9 @@ def run_test_suite(
         f.write(f"- **Cleanup Change Rate:** {report_data['cleanup_change_rate_pct']}% ({cleanup_changes}/{total})\n")
         f.write(f"- **Avg Decider Latency:** {report_data['avg_latencies_ms']['decider']} ms (Auth: {report_data['avg_latencies_ms']['decider_auth']} ms, Net: {report_data['avg_latencies_ms']['decider_network']} ms)\n")
         f.write(f"- **Avg Cleanup Latency:** {report_data['avg_latencies_ms']['cleanup']} ms (Auth: {report_data['avg_latencies_ms']['cleanup_auth']} ms, Net: {report_data['avg_latencies_ms']['cleanup_network']} ms)\n")
-        f.write(f"- **Avg Total Latency:** {report_data['avg_latencies_ms']['total']} ms\n\n")
+        f.write(f"- **Avg Total Latency:** {report_data['avg_latencies_ms']['total']} ms\n")
+        f.write(f"- **Avg Total Latency (Command Inputs):** {avg_cmd_ms:.1f} ms\n")
+        f.write(f"- **Avg Total Latency (Dictation Inputs):** {avg_dict_ms:.1f} ms\n\n")
 
         f.write("## 4. Order Sensitivity (Stability)\n\n")
         f.write(f"- **Option Order Flips:** {order_flips} / {total} ({order_sensitivity_rate}%)\n")

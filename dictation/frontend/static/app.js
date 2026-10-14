@@ -96,7 +96,6 @@ class DictationApp {
           target.tagName === 'TEXTAREA' ||
           target.tagName === 'BUTTON' ||
           target.isContentEditable ||
-          target.closest('#polishedText') ||
           target.closest('button') ||
           this.isWavStreaming
         ) {

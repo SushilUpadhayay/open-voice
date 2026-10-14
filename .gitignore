@@ -18,3 +18,4 @@ __pycache__/
 /laya
 /run.txt
 /.gemini-mcp-proxy
+*.wav

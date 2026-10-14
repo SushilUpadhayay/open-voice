@@ -1,5 +1,6 @@
 import asyncio
 import time
+import uuid
 from typing import Any, Callable, Dict, List, Optional
 
 from .config import CleanupConfig
@@ -22,6 +23,7 @@ class WisprFlowCleanupEngine:
         self,
         config: Optional[CleanupConfig] = None,
         on_raw_chunk: Optional[Callable[[str], None]] = None,
+        on_sentence_started: Optional[Callable[[Dict[str, Any]], None]] = None,
         on_sentence_polished: Optional[Callable[[Dict[str, Any]], None]] = None,
     ):
         self.config = config or CleanupConfig()
@@ -34,6 +36,7 @@ class WisprFlowCleanupEngine:
 
         # Callbacks for live UI visualization
         self.on_raw_chunk = on_raw_chunk
+        self.on_sentence_started = on_sentence_started
         self.on_sentence_polished = on_sentence_polished
 
         # State buffers
@@ -41,6 +44,7 @@ class WisprFlowCleanupEngine:
         self._sentence_results: Dict[int, str] = {}
         self._background_tasks: List[asyncio.Task] = []
         self._sentence_counter = 0
+        self.session_id = uuid.uuid4().hex[:6]
 
     @property
     def polished_sentences(self) -> List[str]:
@@ -62,6 +66,27 @@ class WisprFlowCleanupEngine:
         recent = sentences[-self.config.context_sentence_window:]
         return " ".join(recent).strip()
 
+    def _dispatch_sentence(self, raw_sentence: str):
+        """
+        Assigns unique sequential ID, notifies start of cleaning, and fires background LLM worker.
+        """
+        self._sentence_counter += 1
+        idx = self._sentence_counter
+        sentence_id = f"s_{self.session_id}_{idx}"
+        context = self._get_recent_context()
+
+        if self.on_sentence_started:
+            self.on_sentence_started({
+                "sentence_id": sentence_id,
+                "sentence_index": idx,
+                "raw_sentence": raw_sentence,
+            })
+
+        task = asyncio.create_task(
+            self._polish_sentence_worker(idx, sentence_id, raw_sentence, context)
+        )
+        self._background_tasks.append(task)
+
     async def feed_stream(self, raw_chunk: str, is_pause: bool = False):
         """
         Ingests newly transcribed raw tokens from Nemotron.
@@ -81,23 +106,40 @@ class WisprFlowCleanupEngine:
         new_sentences = self.segmenter.feed(raw_chunk, is_pause=is_pause)
 
         for raw_sentence in new_sentences:
-            self._sentence_counter += 1
-            idx = self._sentence_counter
-            context = self._get_recent_context()
+            self._dispatch_sentence(raw_sentence)
 
-            # Fire Gemini Flash alongside ongoing ASR in a non-blocking background task
-            task = asyncio.create_task(
-                self._polish_sentence_worker(idx, raw_sentence, context)
-            )
-            self._background_tasks.append(task)
+    async def feed_typed_text(self, text: str):
+        """
+        Ingests user-typed text. Flushes any pending mic tail held by the segmenter first,
+        then segments typed text into sentences and dispatches them through the same counter,
+        cleaning and polished flow.
+        """
+        text = text.strip()
+        if not text:
+            return
 
-    async def _polish_sentence_worker(self, index: int, raw_sentence: str, context: str):
+        # Flush any unfinished mic words held by segmenter
+        mic_tail = self.segmenter.flush_tail()
+        if mic_tail:
+            self._dispatch_sentence(mic_tail)
+
+        # Segment typed text into sentences and flush all
+        sentences = self.segmenter.feed(text, is_pause=True)
+        rem = self.segmenter.flush_tail()
+        if rem:
+            sentences.append(rem)
+
+        for sent in sentences:
+            self.raw_history.append(sent)
+            self._dispatch_sentence(sent)
+
+    async def _polish_sentence_worker(self, index: int, sentence_id: str, raw_sentence: str, context: str):
         """
         Background worker that sends the sentence to Gemini Asia Mumbai and updates state.
         """
         user_prompt = f"Context: \"{context}\"\nRaw Sentence: \"{raw_sentence}\""
 
-        cleaned_text, latency_ms = await self.client.generate_async(
+        cleaned_text, latency_ms, tps = await self.client.generate_async(
             system_instruction=WISPR_FLOW_SENTENCE_INSTRUCTION,
             user_prompt=user_prompt,
         )
@@ -109,10 +151,12 @@ class WisprFlowCleanupEngine:
         self._sentence_results[index] = cleaned_text
 
         event = {
+            "sentence_id": sentence_id,
             "sentence_index": index,
             "raw_sentence": raw_sentence,
             "polished_sentence": cleaned_text,
             "latency_ms": round(latency_ms, 1),
+            "tps": round(tps, 1),
             "timestamp": round(time.time(), 3),
         }
 
@@ -126,13 +170,7 @@ class WisprFlowCleanupEngine:
         """
         tail = self.segmenter.flush_tail()
         if tail:
-            self._sentence_counter += 1
-            idx = self._sentence_counter
-            context = self._get_recent_context()
-            task = asyncio.create_task(
-                self._polish_sentence_worker(idx, tail, context)
-            )
-            self._background_tasks.append(task)
+            self._dispatch_sentence(tail)
 
         # Wait for all background LLM tasks fired alongside Nemotron to finish
         if self._background_tasks:
@@ -144,7 +182,7 @@ class WisprFlowCleanupEngine:
 
         # Optional final reconciliation
         if run_final_pass and full_polished:
-            final_text, _ = await self.client.generate_async(
+            final_text, _, _ = await self.client.generate_async(
                 system_instruction=WISPR_FLOW_FINAL_RECONCILIATION_INSTRUCTION,
                 user_prompt=f"Text to finalize:\n\"{full_polished}\"",
             )

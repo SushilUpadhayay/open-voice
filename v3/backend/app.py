@@ -52,6 +52,14 @@ async def get_index():
     return {"message": "Open Voice v3 Streaming Dictation API is running."}
 
 
+@app.get("/api/test-audio")
+async def get_test_audio():
+    wav_path = V3_DIR.parent / "hi3.wav"
+    if wav_path.exists():
+        return FileResponse(wav_path, media_type="audio/wav")
+    return JSONResponse({"error": "hi3.wav not found"}, status_code=404)
+
+
 @app.get("/api/status")
 async def get_status():
     """

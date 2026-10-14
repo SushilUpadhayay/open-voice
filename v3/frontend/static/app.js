@@ -1,6 +1,6 @@
 /**
  * Open Voice v3 — Frontend Client
- * Bi-directional Web Audio 16kHz streamer & Wispr Flow dual-buffer visualizer
+ * Bi-directional Web Audio 16kHz streamer & Wispr Flow sentence-level polish
  */
 
 class DictationApp {
@@ -13,8 +13,16 @@ class DictationApp {
     this.analyser = null;
     this.animationFrameId = null;
 
-    this.sentences = [];
-    this.rawHistory = [];
+    this.sentenceMap = new Map();
+    this.liveTail = '';
+    this.displayCounter = 0;
+    this.generation = 0;
+    this.lastClearTime = 0;
+    this.isWavStreaming = false;
+    this.latestAsrMs = null;
+    this.latestLlmMs = null;
+    this.smoothedVolume = 0;
+    this.vadIsSpeaking = false;
 
     this.initElements();
     this.initEvents();
@@ -25,50 +33,75 @@ class DictationApp {
 
   initElements() {
     this.recordBtn = document.getElementById('recordBtn');
-    this.recordBtnText = document.getElementById('recordBtnText');
-    this.micIcon = document.getElementById('micIcon');
-    this.stopSquare = document.getElementById('stopSquare');
+    this.bar = document.getElementById('bar');
+    this.wave = document.getElementById('wave');
 
-    this.wsStatusPill = document.getElementById('wsStatusPill');
-    this.wsDot = document.getElementById('wsDot');
-    this.wsStatusText = document.getElementById('wsStatusText');
+    this.pill = document.getElementById('pill');
+    this.pillText = document.getElementById('pillText');
+    this.gear = document.getElementById('gear');
+    this.drawer = document.getElementById('drawer');
+    this.closeDrawer = document.getElementById('closeDrawer');
 
-    this.vadBadge = document.getElementById('vadBadge');
     this.vadStatus = document.getElementById('vadStatus');
-
-    this.canvas = document.getElementById('waveformCanvas');
-    this.ctx = this.canvas.getContext('2d');
-    this.visualizerOverlay = document.getElementById('visualizerOverlay');
 
     this.statRtf = document.getElementById('statRtf');
     this.statAsrLat = document.getElementById('statAsrLat');
+    this.statAsrTps = document.getElementById('statAsrTps');
     this.statLlmLat = document.getElementById('statLlmLat');
+    this.statLlmTps = document.getElementById('statLlmTps');
+    this.statFooter = document.getElementById('statFooter');
 
-    this.rawTextEl = document.getElementById('rawText');
+    this.page = document.getElementById('page');
+    this.emptyState = document.getElementById('emptyState');
     this.polishedTextEl = document.getElementById('polishedText');
-    this.polishedStatsEl = document.getElementById('polishedStats');
-
-    this.sentenceFeedEl = document.getElementById('sentenceFeed');
-    this.sentenceCountEl = document.getElementById('sentenceCount');
+    this.countEl = document.getElementById('count');
+    this.actionsEl = document.getElementById('actions');
+    this.directTextInput = document.getElementById('directTextInput');
+    this.directSendBtn = document.getElementById('directSendBtn');
 
     this.copyBtn = document.getElementById('copyBtn');
     this.clearBtn = document.getElementById('clearBtn');
     this.toastEl = document.getElementById('toast');
 
-    this.tabBtns = document.querySelectorAll('.tab-btn');
-    this.tabContents = document.querySelectorAll('.tab-content');
-
-    this.runSimBtn = document.getElementById('runSimBtn');
     this.testHi3Btn = document.getElementById('testHi3Btn');
     this.wavFileInput = document.getElementById('wavFileInput');
+    this.dropZone = document.getElementById('dropZone');
+
+    // Generate real-time waveform bars
+    if (this.wave) {
+      this.wave.innerHTML = '<i></i>'.repeat(36);
+      this.waveBars = Array.from(this.wave.children);
+    }
+
+    // Tail element created; attached to DOM only when it has text
+    this.inFlightTailEl = document.createElement('span');
+    this.inFlightTailEl.className = 'in-flight-tail';
+
+    this.rawLog = document.getElementById('rawLog');
   }
 
   initEvents() {
     this.recordBtn.addEventListener('click', () => this.toggleRecording());
 
-    // Spacebar shortcut to start/stop dictation (when not focused on editable text)
+    if (this.gear) this.gear.addEventListener('click', () => this.drawer.classList.add('open'));
+    if (this.closeDrawer) this.closeDrawer.addEventListener('click', () => this.drawer.classList.remove('open'));
+
+    // Spacebar shortcut to start/stop dictation (when not focused on editable text or buttons)
     window.addEventListener('keydown', (e) => {
-      if (e.code === 'Space' && e.target !== this.polishedTextEl && e.target.tagName !== 'INPUT') {
+      if (e.code === 'Space') {
+        if (e.repeat) return;
+        const target = e.target;
+        if (
+          target.tagName === 'INPUT' ||
+          target.tagName === 'TEXTAREA' ||
+          target.tagName === 'BUTTON' ||
+          target.isContentEditable ||
+          target.closest('#polishedText') ||
+          target.closest('button') ||
+          this.isWavStreaming
+        ) {
+          return;
+        }
         e.preventDefault();
         this.toggleRecording();
       }
@@ -77,31 +110,64 @@ class DictationApp {
     this.copyBtn.addEventListener('click', () => this.copyToClipboard());
     this.clearBtn.addEventListener('click', () => this.clearAll());
 
-    // Tab switching
-    this.tabBtns.forEach((btn) => {
-      btn.addEventListener('click', () => {
-        const targetId = btn.getAttribute('data-tab');
-        this.tabBtns.forEach((b) => b.classList.remove('active'));
-        this.tabContents.forEach((c) => c.classList.remove('active'));
-        btn.classList.add('active');
-        document.getElementById(targetId).classList.add('active');
+    if (this.directSendBtn) {
+      this.directSendBtn.addEventListener('click', () => this.sendDirectText());
+    }
+    if (this.directTextInput) {
+      this.directTextInput.addEventListener('keydown', (e) => {
+        if (e.key === 'Enter') {
+          e.preventDefault();
+          this.sendDirectText();
+        }
       });
+    }
+
+    // User edit detection: inspect anchorNode of current selection in contenteditable
+    this.polishedTextEl.addEventListener('input', () => {
+      const sel = window.getSelection();
+      if (sel && sel.anchorNode) {
+        const node =
+          sel.anchorNode.nodeType === Node.ELEMENT_NODE
+            ? sel.anchorNode
+            : sel.anchorNode.parentElement;
+        const sentenceEl = node ? node.closest('.sentence-item') : null;
+        if (sentenceEl && sentenceEl.dataset.id) {
+          const sent = this.sentenceMap.get(sentenceEl.dataset.id);
+          if (sent) {
+            sent.userEdited = true;
+          }
+        }
+      }
+      this.updateWordCount();
+      this.updateStatusPill();
     });
 
-    // Presets
-    document.querySelectorAll('.preset-btn').forEach((btn) => {
-      btn.addEventListener('click', () => {
-        document.querySelectorAll('.preset-btn').forEach((b) => (b.style.borderColor = ''));
-        btn.style.borderColor = 'var(--accent-primary)';
-        this.selectedPreset = btn.getAttribute('data-preset');
+    if (this.testHi3Btn) {
+      this.testHi3Btn.addEventListener('click', () => this.runHi3Test());
+    }
+    if (this.wavFileInput) {
+      this.wavFileInput.addEventListener('change', (e) => this.handleFileUpload(e));
+    }
+
+    if (this.dropZone) {
+      ['dragenter', 'dragover'].forEach((name) => {
+        this.dropZone.addEventListener(name, (e) => {
+          e.preventDefault();
+          this.dropZone.classList.add('drag-over');
+        });
       });
-    });
-
-    this.runSimBtn.addEventListener('click', () => this.runSimulation());
-    this.testHi3Btn.addEventListener('click', () => this.runHi3Test());
-    this.wavFileInput.addEventListener('change', (e) => this.handleFileUpload(e));
-
-    this.polishedTextEl.addEventListener('input', () => this.updateWordCount());
+      ['dragleave', 'drop'].forEach((name) => {
+        this.dropZone.addEventListener(name, (e) => {
+          e.preventDefault();
+          this.dropZone.classList.remove('drag-over');
+        });
+      });
+      this.dropZone.addEventListener('drop', (e) => {
+        if (e.dataTransfer && e.dataTransfer.files && e.dataTransfer.files[0]) {
+          this.handleFileUpload({ target: { files: [e.dataTransfer.files[0]] } });
+        }
+      });
+    }
   }
 
   initWebSocket() {
@@ -111,18 +177,19 @@ class DictationApp {
     this.ws = new WebSocket(wsUrl);
 
     this.ws.onopen = () => {
-      this.wsDot.classList.add('connected');
-      this.wsStatusText.textContent = 'Server Ready';
+      this.updateButtonStates();
+      this.updateStatusPill();
     };
 
     this.ws.onclose = () => {
-      this.wsDot.classList.remove('connected', 'recording');
-      this.wsStatusText.textContent = 'Disconnected';
+      this.updateButtonStates();
+      this.updateStatusPill();
       setTimeout(() => this.initWebSocket(), 2000);
     };
 
     this.ws.onerror = () => {
-      this.wsStatusText.textContent = 'Connection Error';
+      this.updateButtonStates();
+      this.updateStatusPill();
     };
 
     this.ws.onmessage = (event) => {
@@ -137,9 +204,11 @@ class DictationApp {
 
   handleServerMessage(msg) {
     if (msg.type === 'raw_tail') {
-      this.updateRawTail(msg.tail, msg.asr_latency_ms, msg.rtf);
+      this.updateRawTail(msg.tail, msg.asr_latency_ms, msg.rtf, msg.tps);
+    } else if (msg.type === 'sentence_cleaning') {
+      this.handleSentenceCleaning(msg);
     } else if (msg.type === 'sentence_polished') {
-      this.addPolishedSentence(msg);
+      this.handleSentencePolished(msg);
     } else if (msg.type === 'finalized') {
       this.handleFinalized(msg);
     } else if (msg.type === 'error') {
@@ -147,68 +216,363 @@ class DictationApp {
     }
   }
 
-  updateRawTail(tail, latencyMs, rtf) {
-    if (this.rawTextEl.querySelector('.placeholder-text')) {
-      this.rawTextEl.innerHTML = '';
-    }
-    this.rawHistory.push(tail);
-    this.rawTextEl.textContent = this.rawHistory.slice(-4).join(' ');
-    this.rawTextEl.scrollTop = this.rawTextEl.scrollHeight;
-
-    if (latencyMs) this.statAsrLat.textContent = `${latencyMs} ms`;
-    if (rtf) this.statRtf.textContent = `${rtf}x`;
+  updateButtonStates() {
+    const busy = this.isRecording || this.isWavStreaming;
+    if (this.directSendBtn) this.directSendBtn.disabled = busy;
+    if (this.directTextInput) this.directTextInput.disabled = busy;
+    if (this.recordBtn) this.recordBtn.disabled = this.isWavStreaming;
+    if (this.testHi3Btn) this.testHi3Btn.disabled = busy;
+    if (this.wavFileInput) this.wavFileInput.disabled = busy;
   }
 
-  addPolishedSentence(data) {
-    this.sentences.push(data.polished_sentence);
-    this.renderPolishedDocument();
-
-    if (data.latency_ms) {
-      this.statLlmLat.textContent = `${data.latency_ms} ms`;
-    }
-
-    // Add card to Inspector Feed
-    this.addInspectorCard(data);
+  setPill(state, label) {
+    if (this.pill) this.pill.dataset.s = state;
+    if (this.pillText) this.pillText.textContent = label;
   }
 
-  renderPolishedDocument() {
-    this.polishedTextEl.textContent = this.sentences.join(' ');
+  updateStatusPill() {
+    if (!this.ws || this.ws.readyState === WebSocket.CONNECTING) {
+      this.setPill('connecting', 'Connecting...');
+      return;
+    }
+    if (!this.ws || this.ws.readyState !== WebSocket.OPEN) {
+      this.setPill('offline', 'Offline');
+      return;
+    }
+
+    // Priority: 1. Listening, 2. Cleaning, 3. Done, 4. Ready
+    if (this.isRecording) {
+      this.setPill('listening', 'Listening');
+      return;
+    }
+
+    let isCleaning = false;
+    for (const sent of this.sentenceMap.values()) {
+      if (sent.state === 'cleaning') {
+        isCleaning = true;
+        break;
+      }
+    }
+    if (isCleaning) {
+      this.setPill('cleaning', 'Cleaning');
+      return;
+    }
+
+    const hasText = this.getFullTranscriptText().length > 0;
+    if (hasText) {
+      this.setPill('done', 'Done');
+      return;
+    }
+
+    this.setPill('ready', 'Ready');
+  }
+
+  updateRawTail(tail, latencyMs, rtf, tps) {
+    console.log(`[raw_tail @ ${performance.now().toFixed(0)}ms] latency: ${latencyMs}ms | text: "${tail}"`);
+
+    if (this.rawLog) {
+      const timeStr = new Date().toLocaleTimeString();
+      const newEntry = `[${timeStr}] ${tail}`;
+      const current = this.rawLog.textContent === '(No raw speech received yet)' ? [] : this.rawLog.textContent.split('\n');
+      current.unshift(newEntry);
+      if (current.length > 50) current.length = 50;
+      this.rawLog.textContent = current.join('\n');
+    }
+
+    const trimmed = tail.trim();
+    if (!trimmed) return;
+
+    this.liveTail = (this.liveTail ? this.liveTail + ' ' : '') + trimmed;
+    if (!this.inFlightTailEl.parentNode) {
+      this.polishedTextEl.appendChild(this.inFlightTailEl);
+    }
+    this.inFlightTailEl.textContent = ' ' + this.liveTail;
+    this.updateWordCount();
+
+    if (latencyMs) {
+      this.latestAsrMs = latencyMs;
+      if (this.statAsrLat) this.statAsrLat.textContent = `${Math.round(latencyMs)} ms`;
+    }
+    if (rtf && this.statRtf) this.statRtf.textContent = `${rtf}x`;
+
+    if (tps != null && this.statAsrTps) {
+      this.statAsrTps.textContent = `${Math.round(tps)} tps`;
+    } else if (latencyMs && latencyMs > 0 && this.statAsrTps) {
+      const words = trimmed.split(/\s+/).length;
+      const estTps = Math.round((words * 1.33) / (latencyMs / 1000));
+      this.statAsrTps.textContent = `${estTps} tps`;
+    }
+
+    this.updateFooterStat();
+  }
+
+  removeSentenceFromTail(rawSentence) {
+    if (!this.liveTail || !rawSentence) return;
+    const rawWords = rawSentence.toLowerCase().match(/[a-z0-9']+/g) || [];
+    if (rawWords.length === 0) return;
+
+    const tailWords = this.liveTail.toLowerCase().match(/[a-z0-9']+/g) || [];
+    const tailTokens = this.liveTail.trim().split(/\s+/);
+
+    // Check if the beginning of the live tail matches rawWords
+    let matchesPrefix = true;
+    for (let i = 0; i < rawWords.length; i++) {
+      if (i >= tailWords.length || tailWords[i] !== rawWords[i]) {
+        matchesPrefix = false;
+        break;
+      }
+    }
+
+    if (matchesPrefix) {
+      tailTokens.splice(0, rawWords.length);
+      this.liveTail = tailTokens.join(' ').trim();
+    } else {
+      const rawTrimmed = rawSentence.trim();
+      const idx = this.liveTail.indexOf(rawTrimmed);
+      if (idx !== -1) {
+        this.liveTail = (
+          this.liveTail.slice(0, idx) +
+          ' ' +
+          this.liveTail.slice(idx + rawTrimmed.length)
+        ).trim();
+      } else if (rawWords.length >= tailWords.length) {
+        // If raw_sentence has at least as many words as the tail, clear remaining tail
+        this.liveTail = '';
+      }
+    }
+
+    if (this.liveTail) {
+      this.inFlightTailEl.textContent = ' ' + this.liveTail;
+    } else {
+      this.inFlightTailEl.textContent = '';
+      if (this.inFlightTailEl.parentNode && this.sentenceMap.size === 0) {
+        this.inFlightTailEl.remove();
+      }
+    }
     this.updateWordCount();
   }
 
-  updateWordCount() {
-    const text = this.polishedTextEl.textContent.trim();
-    const count = text ? text.split(/\s+/).length : 0;
-    this.polishedStatsEl.textContent = `${count} word${count === 1 ? '' : 's'}`;
+  getOrCreateSentenceSpan(sentenceId, sentenceIndex, initialText, initialState) {
+    if (this.sentenceMap.has(sentenceId)) {
+      return this.sentenceMap.get(sentenceId);
+    }
+
+    const span = document.createElement('span');
+    span.className = `sentence-item state-${initialState}`;
+    span.dataset.id = sentenceId;
+    span.dataset.index = sentenceIndex;
+
+    this.displayCounter += 1;
+    span.dataset.order = this.displayCounter;
+    span.textContent = initialText.endsWith(' ') ? initialText : initialText + ' ';
+
+    // Append in arrival order before in-flight tail so new sessions never precede old sentences
+    if (this.inFlightTailEl.parentNode) {
+      this.polishedTextEl.insertBefore(span, this.inFlightTailEl);
+    } else {
+      this.polishedTextEl.appendChild(span);
+    }
+
+    const entry = {
+      id: sentenceId,
+      index: sentenceIndex,
+      displayOrder: this.displayCounter,
+      raw: initialText,
+      polished: null,
+      state: initialState,
+      element: span,
+      timer: null,
+      userEdited: false,
+      generation: this.generation,
+    };
+    this.sentenceMap.set(sentenceId, entry);
+    this.updateWordCount();
+    return entry;
   }
 
-  addInspectorCard(data) {
-    const emptyState = this.sentenceFeedEl.querySelector('.feed-empty-state');
-    if (emptyState) emptyState.remove();
+  handleSentenceCleaning(msg) {
+    // Ignore events originating before clearAll
+    if (msg.timestamp && msg.timestamp * 1000 < this.lastClearTime) {
+      return;
+    }
 
-    const card = document.createElement('div');
-    card.className = 'sentence-card';
-    card.innerHTML = `
-      <div class="card-meta">
-        <span>Sentence #${data.sentence_index}</span>
-        <span>⚡ ${data.latency_ms} ms</span>
-      </div>
-      <div class="card-raw">${this.escapeHtml(data.raw_sentence)}</div>
-      <div class="card-polished">✨ ${this.escapeHtml(data.polished_sentence)}</div>
-    `;
+    this.removeSentenceFromTail(msg.raw_sentence);
 
-    this.sentenceFeedEl.prepend(card);
-    this.sentenceCountEl.textContent = this.sentences.length;
+    const entry = this.getOrCreateSentenceSpan(
+      msg.sentence_id,
+      msg.sentence_index,
+      msg.raw_sentence,
+      'cleaning'
+    );
+
+    if (entry.generation !== this.generation) {
+      return;
+    }
+
+    if (entry.state !== 'clean') {
+      entry.state = 'cleaning';
+      entry.element.classList.remove('state-raw', 'state-clean');
+      entry.element.classList.add('state-cleaning');
+    }
+    this.updateStatusPill();
+
+    // 3s timeout fallback: keep raw text, transition to solid clean style
+    if (entry.timer) clearTimeout(entry.timer);
+    entry.timer = setTimeout(() => {
+      if (entry.state === 'cleaning' && entry.generation === this.generation) {
+        entry.state = 'timeout';
+        entry.element.classList.remove('state-cleaning');
+        entry.element.classList.add('state-clean');
+        this.updateStatusPill();
+      }
+    }, 3000);
+  }
+
+  handleSentencePolished(msg) {
+    // Ignore events originating before clearAll
+    if (msg.timestamp && msg.timestamp * 1000 < this.lastClearTime) {
+      return;
+    }
+
+    const entry = this.getOrCreateSentenceSpan(
+      msg.sentence_id,
+      msg.sentence_index,
+      msg.raw_sentence,
+      'cleaning'
+    );
+
+    if (entry.generation !== this.generation) {
+      return;
+    }
+
+    if (entry.timer) {
+      clearTimeout(entry.timer);
+      entry.timer = null;
+    }
+
+    // Edit protection relies strictly on userEdited flag
+    if (entry.userEdited) {
+      entry.state = 'clean';
+      entry.element.classList.remove('state-cleaning');
+      entry.element.classList.add('state-clean');
+      this.updateStatusPill();
+      return;
+    }
+
+    entry.polished = msg.polished_sentence;
+    entry.state = 'clean';
+
+    // Highlight modified tokens comparing original case and punctuation
+    const diffFragment = this.buildDiffFragment(msg.raw_sentence, msg.polished_sentence);
+    entry.element.innerHTML = '';
+    entry.element.appendChild(diffFragment);
+
+    entry.element.classList.remove('state-cleaning', 'state-raw');
+    entry.element.classList.add('state-clean');
+
+    // After 700ms, unwrap diff-word spans so container contains plain text
+    setTimeout(() => {
+      if (entry.generation === this.generation) {
+        const diffSpans = entry.element.querySelectorAll('.diff-word');
+        diffSpans.forEach((diffSpan) => {
+          const textNode = document.createTextNode(diffSpan.textContent);
+          diffSpan.replaceWith(textNode);
+        });
+        entry.element.normalize();
+      }
+    }, 700);
+
+    if (msg.latency_ms) {
+      this.latestLlmMs = msg.latency_ms;
+      if (this.statLlmLat) this.statLlmLat.textContent = `${Math.round(msg.latency_ms)} ms`;
+    }
+
+    if (msg.tps != null && this.statLlmTps) {
+      this.statLlmTps.textContent = `${Math.round(msg.tps)} tps`;
+    } else if (msg.latency_ms && msg.latency_ms > 0 && this.statLlmTps) {
+      const words = (msg.polished_sentence || '').trim().split(/\s+/).length;
+      const estTps = Math.round((words * 1.33) / (msg.latency_ms / 1000));
+      this.statLlmTps.textContent = `${estTps} tps`;
+    }
+
+    this.updateFooterStat();
+    this.updateWordCount();
+    this.updateStatusPill();
+  }
+
+  buildDiffFragment(raw, polished) {
+    const frag = document.createDocumentFragment();
+    const rawTokens = new Set(raw.trim().split(/\s+/));
+    const polishedTokens = (polished.trim() + ' ').split(/(?<=\s+)/);
+
+    for (const token of polishedTokens) {
+      if (!token) continue;
+      const cleanToken = token.trim();
+      const isModified = cleanToken && !rawTokens.has(cleanToken);
+
+      const span = document.createElement('span');
+      span.className = isModified ? 'diff-word highlight' : 'diff-word';
+      span.textContent = token;
+      frag.appendChild(span);
+    }
+    return frag;
+  }
+
+  getFullTranscriptText() {
+    const spans = Array.from(this.polishedTextEl.querySelectorAll('.sentence-item'));
+    const mainText = spans.map((s) => s.textContent.trim()).filter(Boolean).join(' ');
+    const tailText = this.liveTail.trim();
+    return (mainText + (tailText ? ' ' + tailText : '')).trim();
+  }
+
+  updateFooterStat() {
+    if (!this.statFooter) return;
+    const speechStr = this.latestAsrMs != null ? `${Math.round(this.latestAsrMs)} ms` : '-- ms';
+    const cleanupStr = this.latestLlmMs != null ? `${(this.latestLlmMs / 1000).toFixed(1)} s` : '-- s';
+    this.statFooter.innerHTML = `Speech ${speechStr} &nbsp; Cleanup ${cleanupStr}`;
+  }
+
+  updateWordCount() {
+    const text = this.getFullTranscriptText();
+    const count = text ? text.split(/\s+/).length : 0;
+    const hasText = text.length > 0;
+
+    if (this.countEl) {
+      this.countEl.textContent = hasText ? `${count} word${count === 1 ? '' : 's'}` : '';
+    }
+    if (this.actionsEl) {
+      this.actionsEl.hidden = !hasText;
+    }
+    if (this.page) {
+      this.page.classList.toggle('has-content', hasText);
+    }
   }
 
   handleFinalized(msg) {
     this.showToast(`Dictation finished: ${msg.sentences_count} sentences polished!`);
-    this.recordBtn.classList.remove('recording');
-    this.recordBtnText.textContent = 'Start Dictating';
-    this.micIcon.classList.remove('hidden');
-    this.stopSquare.classList.add('hidden');
-    this.wsDot.classList.remove('recording');
-    this.visualizerOverlay.style.display = 'block';
+    if (this.bar) this.bar.classList.remove('rec');
+    this.updateStatusPill();
+  }
+
+  sendDirectText() {
+    if (this.isRecording || this.isWavStreaming) return;
+    const text = this.directTextInput.value.trim();
+    if (!text) return;
+
+    // Reset tail on direct text submission
+    this.liveTail = '';
+    this.inFlightTailEl.textContent = '';
+    if (this.inFlightTailEl.parentNode && this.sentenceMap.size === 0) {
+      this.inFlightTailEl.remove();
+    }
+
+    if (this.ws && this.ws.readyState === WebSocket.OPEN) {
+      this.ws.send(JSON.stringify({ type: 'text_input', text }));
+      this.directTextInput.value = '';
+      this.updateStatusPill();
+    } else {
+      this.showToast('WebSocket not connected.');
+    }
   }
 
   async toggleRecording() {
@@ -234,9 +598,14 @@ class DictationApp {
         sampleRate: 16000,
       });
 
+      if (this.audioContext.state === 'suspended') {
+        await this.audioContext.resume();
+      }
+      console.log(`[AudioContext] state: ${this.audioContext.state}, sampleRate: ${this.audioContext.sampleRate}`);
+
       const source = this.audioContext.createMediaStreamSource(this.mediaStream);
       this.analyser = this.audioContext.createAnalyser();
-      this.analyser.fftSize = 256;
+      this.analyser.fftSize = 128;
       source.connect(this.analyser);
 
       // 4096 frames = ~256ms chunk buffer
@@ -244,23 +613,24 @@ class DictationApp {
       this.processor.onaudioprocess = (e) => {
         if (!this.isRecording) return;
         const inputData = e.inputBuffer.getChannelData(0);
-        const pcm16 = this.floatTo16BitPCM(inputData);
+        const resampled = this.resampleTo16k(inputData, this.audioContext.sampleRate);
+        const pcm16 = this.floatTo16BitPCM(resampled);
         if (this.ws && this.ws.readyState === WebSocket.OPEN) {
           this.ws.send(pcm16.buffer);
         }
       };
 
       source.connect(this.processor);
-      this.processor.connect(this.audioContext.destination);
+      // Mute audio output to prevent microphone feedback through computer speakers
+      const muteNode = this.audioContext.createGain();
+      muteNode.gain.value = 0;
+      this.processor.connect(muteNode);
+      muteNode.connect(this.audioContext.destination);
 
       this.isRecording = true;
-      this.recordBtn.classList.add('recording');
-      this.recordBtnText.textContent = 'Stop Dictating';
-      this.micIcon.classList.add('hidden');
-      this.stopSquare.classList.remove('hidden');
-      this.wsDot.classList.add('recording');
-      this.visualizerOverlay.style.display = 'none';
-
+      this.updateButtonStates();
+      if (this.bar) this.bar.classList.add('rec');
+      this.updateStatusPill();
       this.drawWaveform();
       this.showToast('Microphone live — speak now!');
     } catch (err) {
@@ -271,6 +641,9 @@ class DictationApp {
 
   stopRecording() {
     this.isRecording = false;
+    this.updateButtonStates();
+    if (this.bar) this.bar.classList.remove('rec');
+    this.updateStatusPill();
 
     if (this.ws && this.ws.readyState === WebSocket.OPEN) {
       this.ws.send(JSON.stringify({ type: 'stop' }));
@@ -283,7 +656,22 @@ class DictationApp {
     if (this.audioContext) this.audioContext.close();
 
     cancelAnimationFrame(this.animationFrameId);
-    this.clearCanvas();
+    this.resetWaveform();
+  }
+
+  resampleTo16k(audioData, origSampleRate) {
+    if (!origSampleRate || origSampleRate === 16000) return audioData;
+    const ratio = origSampleRate / 16000;
+    const newLength = Math.round(audioData.length / ratio);
+    const result = new Float32Array(newLength);
+    for (let i = 0; i < newLength; i++) {
+      const origIndex = i * ratio;
+      const indexFloor = Math.floor(origIndex);
+      const indexCeil = Math.min(audioData.length - 1, Math.ceil(origIndex));
+      const fraction = origIndex - indexFloor;
+      result[i] = audioData[indexFloor] * (1 - fraction) + audioData[indexCeil] * fraction;
+    }
+    return result;
   }
 
   floatTo16BitPCM(float32Array) {
@@ -296,173 +684,153 @@ class DictationApp {
   }
 
   initCanvas() {
-    this.clearCanvas();
+    this.resetWaveform();
   }
 
-  clearCanvas() {
-    this.ctx.fillStyle = '#0f121d';
-    this.ctx.fillRect(0, 0, this.canvas.width, this.canvas.height);
-    this.ctx.strokeStyle = 'rgba(99, 102, 241, 0.2)';
-    this.ctx.lineWidth = 1;
-    this.ctx.beginPath();
-    this.ctx.moveTo(0, this.canvas.height / 2);
-    this.ctx.lineTo(this.canvas.width, this.canvas.height / 2);
-    this.ctx.stroke();
+  resetWaveform() {
+    if (this.waveBars) {
+      for (const bar of this.waveBars) {
+        bar.style.height = '15%';
+      }
+    }
+    this.smoothedVolume = 0;
+    this.vadIsSpeaking = false;
+    if (this.vadStatus) {
+      this.vadStatus.textContent = 'Standby';
+    }
   }
 
   drawWaveform() {
-    if (!this.isRecording || !this.analyser) return;
+    if (!this.isRecording || !this.analyser || !this.waveBars) return;
 
     this.animationFrameId = requestAnimationFrame(() => this.drawWaveform());
 
     const bufferLength = this.analyser.frequencyBinCount;
     const dataArray = new Uint8Array(bufferLength);
-    this.analyser.getByteTimeDomainData(dataArray);
+    this.analyser.getByteFrequencyData(dataArray);
 
-    this.ctx.fillStyle = 'rgba(15, 18, 29, 0.3)';
-    this.ctx.fillRect(0, 0, this.canvas.width, this.canvas.height);
-
-    this.ctx.lineWidth = 2.5;
-    const gradient = this.ctx.createLinearGradient(0, 0, this.canvas.width, 0);
-    gradient.addColorStop(0, '#6366f1');
-    gradient.addColorStop(0.5, '#06b6d4');
-    gradient.addColorStop(1, '#a855f7');
-    this.ctx.strokeStyle = gradient;
-
-    this.ctx.beginPath();
-    const sliceWidth = this.canvas.width / bufferLength;
-    let x = 0;
+    const numBars = this.waveBars.length;
     let sumRms = 0;
 
-    for (let i = 0; i < bufferLength; i++) {
-      const v = dataArray[i] / 128.0;
-      const y = (v * this.canvas.height) / 2;
-      sumRms += Math.abs(v - 1.0);
+    for (let i = 0; i < numBars; i++) {
+      const dataIdx = Math.floor(i * (bufferLength / numBars));
+      const val = dataArray[dataIdx] / 255.0;
+      sumRms += val;
+      const heightPct = Math.max(15, Math.min(100, Math.round(val * 100)));
+      this.waveBars[i].style.height = `${heightPct}%`;
+    }
 
-      if (i === 0) {
-        this.ctx.moveTo(x, y);
-      } else {
-        this.ctx.lineTo(x, y);
+    const avgVolume = sumRms / numBars;
+    this.smoothedVolume = 0.85 * this.smoothedVolume + 0.15 * avgVolume;
+    if (this.vadStatus) {
+      if (!this.vadIsSpeaking && this.smoothedVolume > 0.06) {
+        this.vadIsSpeaking = true;
+      } else if (this.vadIsSpeaking && this.smoothedVolume < 0.025) {
+        this.vadIsSpeaking = false;
       }
-      x += sliceWidth;
-    }
-
-    this.ctx.lineTo(this.canvas.width, this.canvas.height / 2);
-    this.ctx.stroke();
-
-    // VAD activity detection for badge
-    const avgVolume = sumRms / bufferLength;
-    if (avgVolume > 0.04) {
-      this.vadBadge.classList.add('speaking');
-      this.vadStatus.textContent = 'Speaking';
-    } else {
-      this.vadBadge.classList.remove('speaking');
-      this.vadStatus.textContent = 'Pause / Silence';
-    }
-  }
-
-  async runSimulation() {
-    const preset = this.selectedPreset || 'backtracking';
-    let chunks = [];
-    let pauseIndices = [];
-
-    if (preset === 'backtracking') {
-      chunks = [
-        'hello so um basically',
-        'let us meet at two',
-        'no wait actually three pm.',
-      ];
-      pauseIndices = [2];
-    } else if (preset === 'fillers') {
-      chunks = [
-        'also uh please bring',
-        'twenty five dollars for the tickets.',
-      ];
-      pauseIndices = [1];
-    } else {
-      chunks = [
-        'hello um so basically let us meet at two no wait actually three pm.',
-        'also please uh bring twenty five dollars for the tickets.',
-      ];
-      pauseIndices = [0, 1];
-    }
-
-    this.showToast('Running simulation with Gemini Asia Mumbai...');
-
-    try {
-      const res = await fetch('/api/simulate', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ chunks, pause_after_indices: pauseIndices }),
-      });
-      const data = await res.json();
-
-      this.rawTextEl.textContent = data.raw_text;
-      this.polishedTextEl.textContent = data.polished_text;
-      this.sentences = [data.polished_text];
-      this.updateWordCount();
-
-      // Render cards
-      this.sentenceFeedEl.innerHTML = '';
-      data.sentence_events.forEach((evt) => this.addInspectorCard(evt));
-      this.showToast('Simulation complete!');
-    } catch (e) {
-      this.showToast('Simulation failed: ' + e.message);
+      this.vadStatus.textContent = this.vadIsSpeaking ? 'Speaking' : 'Silence / Pause';
     }
   }
 
   async runHi3Test() {
-    this.showToast('Running Nemotron 3.5 Vulkan on hi3.wav...');
+    if (this.isRecording || this.isWavStreaming) return;
+    this.showToast('Fetching and streaming hi3.wav...');
     try {
-      // Fetch hi3.wav directly from static or backend
-      const wavRes = await fetch('/static/../static/../../hi3.wav').catch(() => null);
+      const wavRes = await fetch('/api/test-audio').catch(() => null);
       if (!wavRes || !wavRes.ok) {
-        // Run simulator as fallback test
-        this.runSimulation();
+        this.showToast('Could not load test audio file (hi3.wav).');
         return;
       }
       const blob = await wavRes.blob();
-      const formData = new FormData();
-      formData.append('file', blob, 'hi3.wav');
-
-      const res = await fetch('/api/transcribe-file', {
-        method: 'POST',
-        body: formData,
-      });
-      const data = await res.json();
-
-      this.rawTextEl.textContent = data.raw_text;
-      this.polishedTextEl.textContent = data.polished_text;
-      this.statAsrLat.textContent = `${Math.round(data.asr_latency_ms)} ms`;
-      this.statRtf.textContent = `${data.rtf.toFixed(2)}x`;
-      this.showToast('hi3.wav transcription & polish complete!');
+      await this.streamWavBlob(blob);
     } catch (e) {
       this.showToast('Test error: ' + e.message);
     }
   }
 
   async handleFileUpload(e) {
+    if (this.isRecording || this.isWavStreaming) return;
     const file = e.target.files[0];
     if (!file) return;
-
-    this.showToast(`Processing ${file.name}...`);
-    const formData = new FormData();
-    formData.append('file', file);
-
     try {
-      const res = await fetch('/api/transcribe-file', {
-        method: 'POST',
-        body: formData,
-      });
-      const data = await res.json();
-
-      this.rawTextEl.textContent = data.raw_text;
-      this.polishedTextEl.textContent = data.polished_text;
-      this.statAsrLat.textContent = `${Math.round(data.asr_latency_ms)} ms`;
-      this.statRtf.textContent = `${data.rtf.toFixed(2)}x`;
-      this.showToast('Transcription & polish complete!');
+      await this.streamWavBlob(file);
     } catch (err) {
       this.showToast('File processing error: ' + err.message);
+    }
+  }
+
+  async ensureWebSocketOpen() {
+    if (this.ws && this.ws.readyState === WebSocket.OPEN) {
+      return { ws: this.ws, isDedicated: false };
+    }
+    const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+    const wsUrl = `${protocol}//${window.location.host}/ws/dictate`;
+    const dedicatedWs = new WebSocket(wsUrl);
+
+    await new Promise((resolve, reject) => {
+      dedicatedWs.onopen = () => resolve();
+      dedicatedWs.onerror = (err) => reject(err);
+      setTimeout(() => reject(new Error('WebSocket connection timeout')), 4000);
+    });
+
+    dedicatedWs.onmessage = (event) => {
+      try {
+        const msg = JSON.parse(event.data);
+        this.handleServerMessage(msg);
+        if (msg.type === 'finalized') {
+          dedicatedWs.close();
+        }
+      } catch (err) {
+        console.error('Failed to parse WebSocket message:', err);
+      }
+    };
+
+    return { ws: dedicatedWs, isDedicated: true };
+  }
+
+  async streamWavBlob(blob) {
+    this.isWavStreaming = true;
+    this.updateButtonStates();
+    this.updateStatusPill();
+    this.showToast('Decoding and streaming WAV audio...');
+
+    try {
+      const arrayBuffer = await blob.arrayBuffer();
+      const tempAudioCtx = new (window.AudioContext || window.webkitAudioContext)();
+      const audioBuffer = await tempAudioCtx.decodeAudioData(arrayBuffer);
+      await tempAudioCtx.close();
+
+      // Resample to 16 kHz mono Float32
+      const targetRate = 16000;
+      const offlineCtx = new OfflineAudioContext(
+        1,
+        Math.ceil(audioBuffer.duration * targetRate),
+        targetRate
+      );
+      const src = offlineCtx.createBufferSource();
+      src.buffer = audioBuffer;
+      src.connect(offlineCtx.destination);
+      src.start(0);
+      const rendered = await offlineCtx.startRendering();
+      const floatData = rendered.getChannelData(0);
+      const pcm16 = this.floatTo16BitPCM(floatData);
+
+      const { ws } = await this.ensureWebSocketOpen();
+
+      // Stream in 4096-sample slices (sending Int16Array view directly, ~256ms pace)
+      const chunkSize = 4096;
+      for (let offset = 0; offset < pcm16.length; offset += chunkSize) {
+        const chunk = pcm16.subarray(offset, Math.min(offset + chunkSize, pcm16.length));
+        ws.send(chunk);
+        await new Promise((r) => setTimeout(r, 256));
+      }
+
+      // Final flush
+      ws.send(JSON.stringify({ type: 'stop' }));
+    } finally {
+      this.isWavStreaming = false;
+      this.updateButtonStates();
+      this.updateStatusPill();
     }
   }
 
@@ -470,11 +838,13 @@ class DictationApp {
     try {
       const res = await fetch('/api/status');
       const data = await res.json();
-      if (data.asr.available) {
-        document.getElementById('asrStatusPill').style.borderColor = 'rgba(16, 185, 129, 0.4)';
+      const asrModel = document.getElementById('asrModelName');
+      const llmModel = document.getElementById('llmModelName');
+      if (asrModel && data.asr && data.asr.model) {
+        asrModel.textContent = 'Nemotron 3.5 (Vulkan GPU)';
       }
-      if (data.cleaner.key_file_exists) {
-        document.getElementById('llmStatusPill').style.borderColor = 'rgba(6, 182, 212, 0.4)';
+      if (llmModel && data.cleaner && data.cleaner.model) {
+        llmModel.textContent = 'Gemini 2.5 Flash (Mumbai)';
       }
     } catch (e) {
       console.warn('Status check warning:', e);
@@ -482,7 +852,7 @@ class DictationApp {
   }
 
   copyToClipboard() {
-    const text = this.polishedTextEl.textContent.trim();
+    const text = this.getFullTranscriptText();
     if (!text) {
       this.showToast('Nothing to copy!');
       return;
@@ -493,16 +863,28 @@ class DictationApp {
   }
 
   clearAll() {
-    this.sentences = [];
-    this.rawHistory = [];
-    this.polishedTextEl.textContent = '';
-    this.rawTextEl.innerHTML = '<span class="placeholder-text">Awaiting speech input...</span>';
-    this.sentenceFeedEl.innerHTML = '<div class="feed-empty-state"><p>Sentences will be analyzed here in real-time as you pause or speak punctuation.</p></div>';
-    this.sentenceCountEl.textContent = '0';
+    this.generation += 1;
+    this.lastClearTime = Date.now();
+
+    for (const sent of this.sentenceMap.values()) {
+      if (sent.timer) clearTimeout(sent.timer);
+      if (sent.element) sent.element.remove();
+    }
+    this.sentenceMap.clear();
+    this.liveTail = '';
+    this.inFlightTailEl.textContent = '';
+    if (this.inFlightTailEl.parentNode) this.inFlightTailEl.remove();
     this.updateWordCount();
-    this.statAsrLat.textContent = '-- ms';
-    this.statLlmLat.textContent = '-- ms';
-    this.statRtf.textContent = '--';
+    this.updateStatusPill();
+    if (this.statAsrLat) this.statAsrLat.textContent = '-- ms';
+    if (this.statAsrTps) this.statAsrTps.textContent = '-- tps';
+    if (this.statLlmLat) this.statLlmLat.textContent = '-- ms';
+    if (this.statLlmTps) this.statLlmTps.textContent = '-- tps';
+    if (this.statRtf) this.statRtf.textContent = '--';
+    this.latestAsrMs = null;
+    this.latestLlmMs = null;
+    if (this.rawLog) this.rawLog.textContent = '(No raw speech received yet)';
+    this.updateFooterStat();
     this.showToast('Cleared transcript.');
   }
 

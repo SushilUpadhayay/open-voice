@@ -22,5 +22,7 @@ class CleanupConfig:
 
     # Generation parameters
     temperature: float = 0.0
-    max_output_tokens: int = 256
+    max_output_tokens: int = 1024
+    thinking_budget: int = 0              # 0 disables reasoning tokens for sub-second cleanup
     timeout_seconds: int = 15
+

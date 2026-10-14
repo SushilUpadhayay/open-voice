@@ -53,23 +53,29 @@ class GeminiAsiaMumbaiClient:
             headers["Authorization"] = f"Bearer {self.credentials.token}"
         return headers
 
-    def generate(self, system_instruction: str, user_prompt: str) -> Tuple[str, float]:
+    def generate(self, system_instruction: str, user_prompt: str) -> Tuple[str, float, float]:
         """
         Synchronous call to Gemini 2.5 Flash.
         Returns:
-            (generated_text: str, latency_ms: float)
+            (generated_text: str, latency_ms: float, tps: float)
         """
         start = time.perf_counter()
         if not self.endpoint_url:
-            return user_prompt, 0.0
+            return user_prompt, 0.0, 0.0
+
+        gen_config = {
+            "temperature": self.config.temperature,
+            "maxOutputTokens": self.config.max_output_tokens,
+        }
+        if self.config.thinking_budget is not None:
+            gen_config["thinkingConfig"] = {
+                "thinkingBudget": self.config.thinking_budget
+            }
 
         payload = {
             "contents": [{"role": "user", "parts": [{"text": user_prompt}]}],
             "systemInstruction": {"parts": [{"text": system_instruction}]},
-            "generationConfig": {
-                "temperature": self.config.temperature,
-                "maxOutputTokens": self.config.max_output_tokens,
-            },
+            "generationConfig": gen_config,
         }
 
         try:
@@ -82,21 +88,24 @@ class GeminiAsiaMumbaiClient:
             latency_ms = (time.perf_counter() - start) * 1000.0
 
             if response.status_code != 200:
-                return user_prompt, latency_ms
+                return user_prompt, latency_ms, 0.0
 
             data = response.json()
             candidates = data.get("candidates", [])
+            output_tokens = data.get("usageMetadata", {}).get("candidatesTokenCount", 0)
+            tps = (output_tokens / (latency_ms / 1000.0)) if latency_ms > 0 else 0.0
+
             if candidates:
                 parts = candidates[0].get("content", {}).get("parts", [])
                 if parts:
-                    return parts[0].get("text", "").strip(), latency_ms
+                    return parts[0].get("text", "").strip(), latency_ms, round(tps, 1)
 
-            return user_prompt, latency_ms
+            return user_prompt, latency_ms, round(tps, 1)
         except Exception:
             latency_ms = (time.perf_counter() - start) * 1000.0
-            return user_prompt, latency_ms
+            return user_prompt, latency_ms, 0.0
 
-    async def generate_async(self, system_instruction: str, user_prompt: str) -> Tuple[str, float]:
+    async def generate_async(self, system_instruction: str, user_prompt: str) -> Tuple[str, float, float]:
         """
         Non-blocking async call executed concurrently in a worker thread.
         Fires alongside Nemotron ASR without blocking the event loop.

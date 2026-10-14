@@ -1,0 +1,182 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Open Voice – UI mockup</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Instrument+Sans:wght@400;500;600&family=Newsreader:ital,wght@0,400;0,500;1,400&display=swap" rel="stylesheet">
+<style>
+:root{
+  --bg:#13161b; --surface:#1a1e25; --line:#2a303a; --text:#e9ebef; --muted:#8a93a3; --draft:#7d8696;
+  --accent:#8fb4ff; --ok:#7fd1ae;
+  --ui:'Instrument Sans',system-ui,sans-serif; --read:'Newsreader',Georgia,serif;
+}
+*{box-sizing:border-box;margin:0}
+html,body{height:100%}
+body{background:var(--bg);color:var(--text);font-family:var(--ui);display:flex;flex-direction:column;
+  padding-top:env(safe-area-inset-top);padding-bottom:env(safe-area-inset-bottom)}
+button,input{font:inherit;color:inherit}
+:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+
+header{display:flex;align-items:center;justify-content:space-between;padding:16px 24px}
+.brand{font-weight:600;font-size:1rem;letter-spacing:.01em}
+.right{display:flex;align-items:center;gap:10px}
+.pill{display:flex;align-items:center;gap:8px;font-size:.82rem;color:var(--muted);padding:6px 12px;border:1px solid var(--line);border-radius:99px}
+.dot{width:8px;height:8px;border-radius:50%;background:var(--muted)}
+.pill[data-s=listening] .dot{background:#ff7a7a;animation:pulse 1.2s infinite}
+.pill[data-s=cleaning] .dot{background:var(--accent);animation:pulse 1.2s infinite}
+.pill[data-s=done] .dot{background:var(--ok)}
+.pill[data-s=listening]{color:var(--text)} .pill[data-s=cleaning]{color:var(--text)} .pill[data-s=done]{color:var(--ok)}
+@keyframes pulse{50%{opacity:.35}}
+.icon{background:none;border:1px solid var(--line);border-radius:8px;width:34px;height:34px;cursor:pointer;color:var(--muted)}
+.icon:hover{color:var(--text)}
+
+main{flex:1;min-height:0;display:flex;justify-content:center;padding:8px 24px}
+.col{width:100%;max-width:760px;display:flex;flex-direction:column;min-height:0}
+.tools{display:flex;justify-content:space-between;align-items:center;min-height:34px;color:var(--muted);font-size:.82rem;margin-bottom:8px}
+.tools .btns{display:flex;gap:8px}
+.tbtn{background:none;border:1px solid var(--line);border-radius:8px;padding:6px 12px;cursor:pointer;color:var(--muted)}
+.tbtn:hover{color:var(--text)}
+.tbtn.primary{background:var(--accent);border-color:var(--accent);color:#0e1522;font-weight:600}
+
+.page{flex:1;min-height:0;overflow:auto;background:var(--surface);border:1px solid var(--line);border-radius:14px;padding:32px 36px}
+.text{font-family:var(--read);font-size:1.3rem;line-height:1.7;max-width:62ch}
+.s{transition:color .4s,font-style .4s}
+.s.draft{color:var(--draft);font-style:italic}
+.s.cleaning{color:#b4bccb;font-style:italic;background:linear-gradient(90deg,#8fb4ff14,#8fb4ff33,#8fb4ff14);background-size:200% 100%;animation:sh 1.8s linear infinite}
+@keyframes sh{to{background-position:-200% 0}}
+.s.clean{color:var(--text)}
+.s .chg{background:#8fb4ff40;border-radius:2px}
+
+.empty{height:100%;display:flex;flex-direction:column;justify-content:center;align-items:center;text-align:center;gap:14px;color:var(--muted)}
+.empty h2{font-family:var(--read);font-weight:400;font-size:1.5rem;color:var(--text)}
+.legend{display:flex;gap:18px;font-size:.85rem}
+.legend span{font-family:var(--read);font-size:1rem}
+.legend .d{color:var(--draft);font-style:italic} .legend .c{color:var(--text)}
+
+footer{padding:14px 24px 20px;display:flex;justify-content:center}
+.dock{width:100%;max-width:760px}
+.bar{display:flex;align-items:center;gap:8px;background:var(--surface);border:1px solid var(--line);border-radius:14px;padding:8px}
+.bar:focus-within{border-color:var(--accent)}
+.bar input{flex:1;background:none;border:0;outline:0;padding:8px 10px;font-size:.98rem}
+.bar input::placeholder{color:var(--muted)}
+.send{background:none;border:0;color:var(--muted);padding:8px 12px;cursor:pointer;border-radius:8px}
+.send:hover{color:var(--text)}
+.mic{width:42px;height:42px;border-radius:50%;border:0;background:var(--accent);color:#0e1522;cursor:pointer;display:grid;place-items:center}
+.mic svg{width:20px;height:20px}
+.wave{flex:1;display:none;align-items:center;gap:3px;height:42px;padding:0 10px}
+.wave i{flex:1;max-width:4px;background:var(--accent);border-radius:2px;height:20%;animation:w 1s ease-in-out infinite}
+@keyframes w{50%{height:90%}}
+.rec .wave{display:flex} .rec input,.rec .send{display:none}
+.rec .mic{background:#ff7a7a}
+.hint{display:flex;justify-content:space-between;color:var(--muted);font-size:.78rem;margin-top:8px;padding:0 6px}
+
+/* dev drawer */
+.drawer{position:fixed;top:0;right:0;bottom:0;width:320px;max-width:92vw;background:var(--surface);border-left:1px solid var(--line);padding:20px;transform:translateX(100%);transition:transform .25s;overflow:auto;z-index:5}
+.drawer.open{transform:none}
+.drawer h3{font-size:.95rem;margin-bottom:14px;display:flex;justify-content:space-between;align-items:center}
+.box{border:1px solid var(--line);border-radius:10px;padding:14px;margin-bottom:14px;font-size:.85rem;color:var(--muted)}
+.box b{display:block;color:var(--text);font-weight:500;margin-bottom:6px}
+.drop{border:1px dashed var(--line);border-radius:10px;padding:18px;text-align:center;margin:10px 0}
+.row{display:flex;justify-content:space-between;padding:4px 0}
+.row span:last-child{color:var(--text)}
+.demo{position:fixed;left:16px;bottom:16px;display:flex;gap:6px;align-items:center;font-size:.72rem;color:var(--muted);z-index:4;flex-wrap:wrap;max-width:240px}
+.demo button{background:var(--surface);border:1px solid var(--line);border-radius:6px;padding:4px 8px;color:var(--muted);cursor:pointer}
+.demo button.on{color:var(--text);border-color:var(--accent)}
+@media(max-width:640px){header,main,footer{padding-left:12px;padding-right:12px}.page{padding:20px}.text{font-size:1.15rem}.demo{display:none}}
+@media(prefers-reduced-motion:reduce){*{animation:none!important;transition:none!important}}
+</style>
+</head>
+<body>
+
+<header>
+  <div class="brand">Open Voice</div>
+  <div class="right">
+    <div class="pill" id="pill" data-s="ready"><span class="dot"></span><span id="pillText">Ready</span></div>
+    <button class="icon" id="gear" title="Developer tools" aria-label="Developer tools">⚙</button>
+  </div>
+</header>
+
+<main>
+  <div class="col">
+    <div class="tools">
+      <span id="count"></span>
+      <div class="btns" id="actions" hidden>
+        <button class="tbtn">Clear</button>
+        <button class="tbtn primary">Copy text</button>
+      </div>
+    </div>
+    <div class="page" id="page"></div>
+  </div>
+</main>
+
+<footer>
+  <div class="dock">
+    <div class="bar" id="bar">
+      <input id="inp" placeholder="Type something to clean up…" aria-label="Type text">
+      <div class="wave" id="wave"></div>
+      <button class="send">Send</button>
+      <button class="mic" id="mic" aria-label="Start or stop dictation">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><rect x="9" y="3" width="6" height="12" rx="3"/><path d="M5 11a7 7 0 0 0 14 0M12 18v3"/></svg>
+      </button>
+    </div>
+    <div class="hint"><span>Press Space to talk</span><span id="stat">Speech 142 ms &nbsp; Cleanup 1.5 s</span></div>
+  </div>
+</footer>
+
+<aside class="drawer" id="drawer">
+  <h3>Developer tools <button class="icon" id="close" aria-label="Close">✕</button></h3>
+  <div class="box">
+    <b>Test with a WAV file</b>
+    Streams a 16 kHz mono file as if you were speaking.
+    <div class="drop">Drop a WAV here, or browse</div>
+    <button class="tbtn primary" style="width:100%">Run test with hi3.wav</button>
+  </div>
+  <div class="box">
+    <b>Performance</b>
+    <div class="row"><span>Speech speed</span><span>5.41x</span></div>
+    <div class="row"><span>Speech latency</span><span>142 ms</span></div>
+    <div class="row"><span>Cleanup latency</span><span>1525 ms</span></div>
+  </div>
+  <div class="box">
+    <b>Models</b>
+    <div class="row"><span>Speech</span><span>Nemotron 3.5</span></div>
+    <div class="row"><span>Cleanup</span><span>Gemini 2.5 Flash</span></div>
+  </div>
+</aside>
+
+<div class="demo">Preview:
+  <button data-v="empty" class="on">Empty</button><button data-v="listening">Listening</button>
+  <button data-v="cleaning">Cleaning</button><button data-v="done">Done</button>
+</div>
+
+<script>
+const $=id=>document.getElementById(id);
+$('wave').innerHTML='<i></i>'.repeat(40);
+[...$('wave').children].forEach((b,i)=>b.style.animationDelay=(i*.07)+'s');
+$('gear').onclick=()=>$('drawer').classList.add('open');
+$('close').onclick=()=>$('drawer').classList.remove('open');
+
+const empty=`<div class="empty"><h2>Say it or type it</h2><p>Press Space and start talking, or use the box below.</p>
+<div class="legend"><span class="d">gray italic is a draft</span><span class="c">white is cleaned</span></div></div>`;
+const T={
+ listening:`<p class="text"><span class="s clean">Hello, this is Open Voice.</span> <span class="s draft">um so i wanted to test how the cleanup works when i speak fast</span></p>`,
+ cleaning:`<p class="text"><span class="s clean">Hello, this is Open Voice.</span> <span class="s cleaning">um so i wanted to test how the cleanup works when i speak fast</span> <span class="s draft">and then stop</span></p>`,
+ done:`<p class="text"><span class="s clean">Hello, this is Open Voice.</span> <span class="s clean">So I wanted to test how the cleanup works when I speak<span class="chg">.</span></span> <span class="s clean">And then stop.</span></p>`
+};
+const P={empty:['ready','Ready'],listening:['listening','Listening'],cleaning:['cleaning','Cleaning'],done:['done','Done']};
+const W={empty:'',listening:'21 words',cleaning:'21 words',done:'20 words'};
+function show(v){
+  $('page').innerHTML=v==='empty'?empty:T[v];
+  $('pill').dataset.s=P[v][0];$('pillText').textContent=P[v][1];
+  $('count').textContent=W[v];$('actions').hidden=v==='empty';
+  $('bar').classList.toggle('rec',v==='listening');
+  document.querySelectorAll('.demo button').forEach(b=>b.classList.toggle('on',b.dataset.v===v));
+}
+document.querySelectorAll('.demo button').forEach(b=>b.onclick=()=>show(b.dataset.v));
+$('mic').onclick=()=>show($('bar').classList.contains('rec')?'cleaning':'listening');
+show('empty');
+</script>
+</body>
+</html>

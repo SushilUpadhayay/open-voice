@@ -1,5 +1,5 @@
 /**
- * Open Voice v3 — Frontend Client
+ * Open Voice Dictation — Frontend Client
  * Bi-directional Web Audio 16kHz streamer & Wispr Flow sentence-level polish
  */
 

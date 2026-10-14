@@ -1,4 +1,4 @@
-# Open Voice v3 — Real-Time Streaming Dictation & Wispr Flow Polish
+# Open Voice Dictation — Real-Time Streaming Dictation & Wispr Flow Polish
 
 A next-generation streaming dictation platform combining local **Nemotron 3.5 Vulkan GPU ASR** with **Wispr Flow-style sentence-level cleanup** powered by **Gemini 2.5 Flash in Asia Mumbai (`asia-south1`)**.
 
@@ -10,14 +10,14 @@ A next-generation streaming dictation platform combining local **Nemotron 3.5 Vu
 [Microphone (Web Audio API)]
           │ (16kHz PCM chunks via WebSocket)
           ▼
-    [v3/backend/ws_handler]
+    [dictation/backend/ws_handler]
           │
-          ├─► [v3/backend/vad] (Micro-pause & speech activity detection)
+          ├─► [dictation/backend/vad] (Micro-pause & speech activity detection)
           ▼
-   [v3/asr (Nemotron 3.5)] ──(Vulkan0 GPU)──► [Live In-Flight Raw Stream (UI)]
+   [dictation/asr (Nemotron 3.5)] ──(Vulkan0 GPU)──► [Live In-Flight Raw Stream (UI)]
           │ (Raw text tokens)
           ▼
- [v3/cleanup (Wispr Flow Engine)]
+ [dictation/cleanup (Wispr Flow Engine)]
           │ (Sentence boundary detected on full stop or 350ms pause)
           ▼
  [Concurrent Background Task] (Non-blocking asyncio.create_task)
@@ -38,7 +38,7 @@ A next-generation streaming dictation platform combining local **Nemotron 3.5 Vu
 ## Directory Structure
 
 ```text
-v3/
+dictation/
 ├── asr/                       # Standalone Nemotron 3.5 ASR & VAD pipeline
 │   ├── client.py              # Python client (file & in-memory PCM decoding)
 │   ├── run_asr.py             # CLI test runner
@@ -65,12 +65,18 @@ v3/
 
 ---
 
-## Running the v3 Service
+## Running the Dictation Service
 
-Launch the server using `.venv` and Uvicorn:
+Launch the server using `uv` or `.venv`:
 
 ```bash
-.venv\Scripts\python.exe -m uvicorn v3.backend.app:app --port 8002 --reload
+uv run uvicorn dictation.backend.app:app --port 8002 --reload
+```
+
+or with Python directly:
+
+```bash
+.venv\Scripts\python.exe -m uvicorn dictation.backend.app:app --port 8002 --reload
 ```
 
 Then open your browser at **`http://127.0.0.1:8002/`**.

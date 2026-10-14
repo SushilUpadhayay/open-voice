@@ -10,8 +10,8 @@ from ..cleanup import WisprFlowCleanupEngine, CleanupConfig
 class DictationWebSocketHandler:
     """
     Integration layer connecting client WebSocket transport to:
-    - v3/asr: NemotronStreamSession (all ASR & VAD running logic)
-    - v3/cleanup: WisprFlowCleanupEngine (all cleanup & LLM polish running logic)
+    - dictation/asr: NemotronStreamSession (all ASR & VAD running logic)
+    - dictation/cleanup: WisprFlowCleanupEngine (all cleanup & LLM polish running logic)
     """
 
     def __init__(

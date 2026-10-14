@@ -13,8 +13,8 @@ from ..cleanup.engine import WisprFlowCleanupEngine
 from .ws_handler import DictationWebSocketHandler
 
 BACKEND_DIR = Path(__file__).resolve().parent
-V3_DIR = BACKEND_DIR.parent
-FRONTEND_DIR = V3_DIR / "frontend"
+DICTATION_DIR = BACKEND_DIR.parent
+FRONTEND_DIR = DICTATION_DIR / "frontend"
 STATIC_DIR = FRONTEND_DIR / "static"
 
 # Initialize ASR & Cleanup
@@ -27,7 +27,7 @@ ws_handler = DictationWebSocketHandler(
 )
 
 app = FastAPI(
-    title="Open Voice v3 — Streaming Dictation & Wispr Flow Polish",
+    title="Open Voice Dictation — Streaming Dictation & Wispr Flow Polish",
     description="Nemotron 3.5 Vulkan ASR + Gemini 2.5 Flash Asia Mumbai Cleanup",
     version="3.0.0",
 )
@@ -49,12 +49,12 @@ async def get_index():
     index_file = FRONTEND_DIR / "index.html"
     if index_file.exists():
         return FileResponse(index_file)
-    return {"message": "Open Voice v3 Streaming Dictation API is running."}
+    return {"message": "Open Voice Dictation Streaming Dictation API is running."}
 
 
 @app.get("/api/test-audio")
 async def get_test_audio():
-    wav_path = V3_DIR.parent / "hi3.wav"
+    wav_path = DICTATION_DIR.parent / "hi3.wav"
     if wav_path.exists():
         return FileResponse(wav_path, media_type="audio/wav")
     return JSONResponse({"error": "hi3.wav not found"}, status_code=404)

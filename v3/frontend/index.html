@@ -1,0 +1,213 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Open Voice v3 — Real-Time Streaming Dictation & Wispr Flow Polish</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=Outfit:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+  <div class="ambient-glow glow-1"></div>
+  <div class="ambient-glow glow-2"></div>
+  <div class="ambient-glow glow-3"></div>
+
+  <div class="app-container">
+    <!-- Top Navigation / Status Header -->
+    <header class="app-header">
+      <div class="brand-group">
+        <div class="brand-logo">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M12 2a3 3 0 0 0-3 3v7a3 3 0 0 0 6 0V5a3 3 0 0 0-3-3Z"/>
+            <path d="M19 10v2a7 7 0 0 1-14 0v-2"/>
+            <line x1="12" y1="19" x2="12" y2="22"/>
+            <line x1="8" y1="22" x2="16" y2="22"/>
+          </svg>
+        </div>
+        <div>
+          <div class="brand-title-row">
+            <h1>Open Voice <span class="version-badge">v3</span></h1>
+            <span class="architecture-tag">Wispr Flow Engine</span>
+          </div>
+          <p class="brand-subtitle">Nemotron 3.5 GPU Vulkan + Gemini 2.5 Flash (Asia Mumbai)</p>
+        </div>
+      </div>
+
+      <div class="header-status-group">
+        <div class="status-pill" id="wsStatusPill">
+          <span class="pulse-dot" id="wsDot"></span>
+          <span id="wsStatusText">Connecting...</span>
+        </div>
+        <div class="status-pill model-pill" id="asrStatusPill" title="Local Nemotron 3.5 ASR Engine">
+          <span class="pill-icon">⚡</span>
+          <span>Nemotron 3.5 (Vulkan GPU)</span>
+        </div>
+        <div class="status-pill cloud-pill" id="llmStatusPill" title="Gemini 2.5 Flash Asia Mumbai">
+          <span class="pill-icon">✨</span>
+          <span>Gemini 2.5 (Asia Mumbai)</span>
+        </div>
+      </div>
+    </header>
+
+    <!-- Main Workspace Grid -->
+    <main class="main-layout">
+      <!-- Left Column: Dictation Controls & Inspector -->
+      <section class="control-panel glass-card">
+        <div class="section-header">
+          <h2>Voice Capture</h2>
+          <span class="vad-meter-badge" id="vadBadge">
+            <span class="vad-light" id="vadLight"></span>
+            <span id="vadStatus">VAD Standby</span>
+          </span>
+        </div>
+
+        <!-- Waveform Visualizer -->
+        <div class="visualizer-container">
+          <canvas id="waveformCanvas" width="400" height="90"></canvas>
+          <div class="visualizer-overlay" id="visualizerOverlay">
+            <span>Ready to dictate</span>
+          </div>
+        </div>
+
+        <!-- Record Button & Trigger Controls -->
+        <div class="record-action-group">
+          <button id="recordBtn" class="record-btn">
+            <div class="btn-glow"></div>
+            <div class="record-icon-wrapper">
+              <svg id="micIcon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <path d="M12 2a3 3 0 0 0-3 3v7a3 3 0 0 0 6 0V5a3 3 0 0 0-3-3Z"/>
+                <path d="M19 10v2a7 7 0 0 1-14 0v-2"/>
+                <line x1="12" y1="19" x2="12" y2="22"/>
+                <line x1="8" y1="22" x2="16" y2="22"/>
+              </svg>
+              <div id="stopSquare" class="stop-icon hidden"></div>
+            </div>
+            <div class="btn-text-col">
+              <span class="btn-primary-text" id="recordBtnText">Start Dictating</span>
+              <span class="btn-subtext">Click or press Space</span>
+            </div>
+          </button>
+        </div>
+
+        <!-- Telemetry Stats Strip -->
+        <div class="stats-strip">
+          <div class="stat-card">
+            <span class="stat-label">ASR Speed</span>
+            <span class="stat-value" id="statRtf">--</span>
+          </div>
+          <div class="stat-card">
+            <span class="stat-label">Inference Latency</span>
+            <span class="stat-value" id="statAsrLat">-- ms</span>
+          </div>
+          <div class="stat-card">
+            <span class="stat-label">Mumbai LLM Latency</span>
+            <span class="stat-value" id="statLlmLat">-- ms</span>
+          </div>
+        </div>
+
+        <!-- Tabs for Testing Tools -->
+        <div class="tab-controls">
+          <button class="tab-btn active" data-tab="inspectorTab">Sentence Inspector</button>
+          <button class="tab-btn" data-tab="simulatorTab">Wispr Simulator</button>
+          <button class="tab-btn" data-tab="fileTab">WAV Tester</button>
+        </div>
+
+        <!-- Tab 1: Sentence Inspector (Live Diffs) -->
+        <div class="tab-content active" id="inspectorTab">
+          <div class="inspector-header">
+            <span>Cleaned Sentences (<span id="sentenceCount">0</span>)</span>
+            <span class="hint-text">Parallel LLM Polish</span>
+          </div>
+          <div class="sentence-feed" id="sentenceFeed">
+            <div class="feed-empty-state">
+              <p>Sentences will be analyzed here in real-time as you pause or speak punctuation.</p>
+            </div>
+          </div>
+        </div>
+
+        <!-- Tab 2: Simulator (Test without mic) -->
+        <div class="tab-content" id="simulatorTab">
+          <p class="tab-description">Test Wispr Flow cleanup rules without using a microphone:</p>
+          <div class="preset-buttons">
+            <button class="preset-btn" data-preset="backtracking">
+              <strong>Backtracking & Self-Correction</strong>
+              <span>"Let us meet at two no wait actually three pm."</span>
+            </button>
+            <button class="preset-btn" data-preset="fillers">
+              <strong>Filler Words & Numbers</strong>
+              <span>"Um so like please bring twenty five dollars for tickets."</span>
+            </button>
+            <button class="preset-btn" data-preset="multisentence">
+              <strong>Multi-Sentence Flow</strong>
+              <span>Two sentences with fillers and pause detection</span>
+            </button>
+          </div>
+          <button id="runSimBtn" class="action-btn-secondary">Run Selected Simulation</button>
+        </div>
+
+        <!-- Tab 3: WAV File Tester -->
+        <div class="tab-content" id="fileTab">
+          <p class="tab-description">Transcribe and polish any local 16kHz WAV file:</p>
+          <div class="file-upload-box" id="dropZone">
+            <input type="file" id="wavFileInput" accept=".wav">
+            <div class="upload-icon">📁</div>
+            <p>Drag & drop a WAV file here, or <span>browse</span></p>
+            <span class="hint-text">Tested on hi3.wav (16 kHz mono)</span>
+          </div>
+          <button id="testHi3Btn" class="action-btn-secondary">Run Quick Test with hi3.wav</button>
+        </div>
+      </section>
+
+      <!-- Right Column: Dual-Buffer Live Output -->
+      <section class="transcript-display glass-card">
+        <!-- Top Output: Polished Document -->
+        <div class="buffer-section polished-section">
+          <div class="buffer-header">
+            <div class="buffer-title-row">
+              <span class="buffer-badge polished-badge">✨ Wispr Flow Polished</span>
+              <span class="char-count" id="polishedStats">0 words</span>
+            </div>
+            <div class="buffer-actions">
+              <button class="icon-btn" id="copyBtn" title="Copy text to clipboard">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                  <rect x="9" y="9" width="13" height="13" rx="2" ry="2"/>
+                  <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/>
+                </svg>
+                <span>Copy</span>
+              </button>
+              <button class="icon-btn" id="clearBtn" title="Clear transcript">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                  <polyline points="3 6 5 6 21 6"/>
+                  <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/>
+                </svg>
+                <span>Clear</span>
+              </button>
+            </div>
+          </div>
+          <div class="buffer-content polished-content" id="polishedText" contenteditable="true" placeholder="Your clean, polished dictation will appear here as you speak..."></div>
+        </div>
+
+        <!-- Bottom Output: Verbatim Raw Stream -->
+        <div class="buffer-section raw-section">
+          <div class="buffer-header">
+            <div class="buffer-title-row">
+              <span class="buffer-badge raw-badge">⚡ Live In-Flight ASR (Nemotron)</span>
+              <span class="raw-status-hint">Instant verbatim preview</span>
+            </div>
+          </div>
+          <div class="buffer-content raw-content" id="rawText">
+            <span class="placeholder-text">Awaiting speech input...</span>
+          </div>
+        </div>
+      </section>
+    </main>
+
+    <!-- Footer Toast Notification Container -->
+    <div id="toast" class="toast"></div>
+  </div>
+
+  <script src="/static/app.js"></script>
+</body>
+</html>

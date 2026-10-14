@@ -76,10 +76,10 @@ Activate your virtual environment and launch uvicorn:
 
 ```bash
 # Using Python directly:
-.myvenv\Scripts\python.exe -m uvicorn v2.server.app:app --port 8001
+.venv\Scripts\python.exe -m uvicorn v2.server.app:app --port 8001
 
 # Or with live reload:
-.myvenv\Scripts\python.exe -m uvicorn v2.server.app:app --port 8001 --reload
+.venv\Scripts\python.exe -m uvicorn v2.server.app:app --port 8001 --reload
 ```
 
 Then open your browser at **`http://127.0.0.1:8001/`**.

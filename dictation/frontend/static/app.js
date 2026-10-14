@@ -75,9 +75,18 @@ class DictationApp {
 
     // Tail element created; attached to DOM only when it has text
     this.inFlightTailEl = document.createElement('span');
-    this.inFlightTailEl.className = 'in-flight-tail';
-
     this.rawLog = document.getElementById('rawLog');
+
+    // Teleprompter elements
+    this.teleprompter = document.getElementById('teleprompter');
+    this.teleprompterToggle = document.getElementById('teleprompterToggle');
+    this.teleprompterClose = document.getElementById('teleprompterClose');
+    this.teleprompterClear = document.getElementById('teleprompterClear');
+    this.teleprompterFontInc = document.getElementById('teleprompterFontInc');
+    this.teleprompterFontDec = document.getElementById('teleprompterFontDec');
+    this.teleprompterText = document.getElementById('teleprompterText');
+    this.teleprompterStats = document.getElementById('teleprompterStats');
+    this.teleprompterFontSize = 1.15;
   }
 
   initEvents() {
@@ -167,6 +176,90 @@ class DictationApp {
         }
       });
     }
+
+    // Teleprompter events (strictly visual script, completely isolated)
+    if (this.teleprompterText) {
+      const savedPrompt = localStorage.getItem('openvoice_teleprompter_text');
+      if (savedPrompt) {
+        this.teleprompterText.value = savedPrompt;
+        this.updateTeleprompterStats();
+      }
+
+      this.teleprompterText.addEventListener('input', () => {
+        localStorage.setItem('openvoice_teleprompter_text', this.teleprompterText.value);
+        this.updateTeleprompterStats();
+      });
+    }
+
+    if (this.teleprompterClear) {
+      this.teleprompterClear.addEventListener('click', () => {
+        if (this.teleprompterText) {
+          this.teleprompterText.value = '';
+          localStorage.removeItem('openvoice_teleprompter_text');
+          this.updateTeleprompterStats();
+          this.teleprompterText.focus();
+        }
+      });
+    }
+
+    if (this.teleprompterFontInc) {
+      this.teleprompterFontInc.addEventListener('click', () => {
+        this.teleprompterFontSize = Math.min(2.2, this.teleprompterFontSize + 0.15);
+        if (this.teleprompterText) {
+          this.teleprompterText.style.fontSize = `${this.teleprompterFontSize}rem`;
+        }
+      });
+    }
+
+    if (this.teleprompterFontDec) {
+      this.teleprompterFontDec.addEventListener('click', () => {
+        this.teleprompterFontSize = Math.max(0.85, this.teleprompterFontSize - 0.15);
+        if (this.teleprompterText) {
+          this.teleprompterText.style.fontSize = `${this.teleprompterFontSize}rem`;
+        }
+      });
+    }
+
+    const toggleTeleprompter = () => {
+      if (!this.teleprompter) return;
+      const isHidden = this.teleprompter.classList.toggle('hidden');
+      localStorage.setItem('openvoice_teleprompter_hidden', isHidden ? 'true' : 'false');
+      if (this.teleprompterToggle) {
+        this.teleprompterToggle.style.borderColor = isHidden ? 'var(--line)' : 'var(--accent)';
+        this.teleprompterToggle.style.color = isHidden ? 'var(--muted)' : 'var(--text)';
+      }
+    };
+
+    if (this.teleprompterToggle) {
+      this.teleprompterToggle.addEventListener('click', toggleTeleprompter);
+    }
+    if (this.teleprompterClose) {
+      this.teleprompterClose.addEventListener('click', toggleTeleprompter);
+    }
+
+    if (localStorage.getItem('openvoice_teleprompter_hidden') === 'true' && this.teleprompter) {
+      this.teleprompter.classList.add('hidden');
+      if (this.teleprompterToggle) {
+        this.teleprompterToggle.style.borderColor = 'var(--line)';
+        this.teleprompterToggle.style.color = 'var(--muted)';
+      }
+    } else if (this.teleprompterToggle) {
+      this.teleprompterToggle.style.borderColor = 'var(--accent)';
+      this.teleprompterToggle.style.color = 'var(--text)';
+    }
+  }
+
+  updateTeleprompterStats() {
+    if (!this.teleprompterStats || !this.teleprompterText) return;
+    const text = (this.teleprompterText.value || '').trim();
+    if (!text) {
+      this.teleprompterStats.textContent = '0 words';
+      return;
+    }
+    const words = text.split(/\s+/).filter(Boolean).length;
+    const readSec = Math.round((words / 140) * 60);
+    const timeStr = readSec < 60 ? `~${readSec}s` : `~${Math.floor(readSec / 60)}m ${readSec % 60}s`;
+    this.teleprompterStats.textContent = `${words} word${words === 1 ? '' : 's'} • ${timeStr} read`;
   }
 
   initWebSocket() {

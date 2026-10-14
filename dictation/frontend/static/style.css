@@ -115,21 +115,160 @@ header {
   border-color: var(--accent);
 }
 
-/* Main Column */
+/* Main Layout */
 main {
   flex: 1;
   min-height: 0;
   display: flex;
   justify-content: center;
+  align-items: stretch;
+  gap: 20px;
   padding: 8px 24px;
+  width: 100%;
+  max-width: 1240px;
+  margin: 0 auto;
 }
 
 .col {
+  flex: 1;
   width: 100%;
   max-width: 760px;
+  min-width: 0;
   display: flex;
   flex-direction: column;
   min-height: 0;
+}
+
+/* Teleprompter Side Panel (Reference Script Only) */
+.teleprompter {
+  width: 360px;
+  min-width: 260px;
+  max-width: 420px;
+  display: flex;
+  flex-direction: column;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  min-height: 0;
+  margin-top: 42px;
+  transition: opacity 0.2s ease, transform 0.2s ease;
+}
+
+.teleprompter.hidden {
+  display: none;
+}
+
+.teleprompter-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 10px 14px;
+  border-bottom: 1px solid var(--line);
+  background: rgba(255, 255, 255, 0.02);
+}
+
+.teleprompter-title {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-weight: 600;
+  font-size: 0.86rem;
+  color: var(--text);
+}
+
+.teleprompter-tag {
+  font-size: 0.68rem;
+  color: var(--muted);
+  border: 1px solid var(--line);
+  border-radius: 99px;
+  padding: 1px 7px;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.teleprompter-actions {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.icon-sm {
+  background: none;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  height: 26px;
+  padding: 0 8px;
+  cursor: pointer;
+  color: var(--muted);
+  font-size: 0.74rem;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: color 0.15s ease, border-color 0.15s ease;
+}
+
+.icon-sm:hover {
+  color: var(--text);
+  border-color: var(--accent);
+}
+
+.teleprompter-body {
+  flex: 1;
+  min-height: 0;
+  padding: 14px 16px;
+  display: flex;
+}
+
+.teleprompter-body textarea {
+  width: 100%;
+  height: 100%;
+  background: transparent;
+  border: none;
+  outline: none;
+  resize: none;
+  color: var(--text);
+  font-family: var(--read);
+  font-size: 1.15rem;
+  line-height: 1.7;
+  padding: 0;
+}
+
+.teleprompter-body textarea::placeholder {
+  color: var(--muted);
+  opacity: 0.6;
+  font-family: var(--ui);
+  font-size: 0.88rem;
+  line-height: 1.5;
+}
+
+.teleprompter-footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 8px 14px;
+  border-top: 1px solid var(--line);
+  font-size: 0.75rem;
+  color: var(--muted);
+  background: rgba(255, 255, 255, 0.01);
+}
+
+.teleprompter-note {
+  font-size: 0.7rem;
+  opacity: 0.75;
+}
+
+@media (max-width: 960px) {
+  main {
+    flex-direction: column;
+    align-items: center;
+  }
+  .teleprompter {
+    width: 100%;
+    max-width: 760px;
+    height: 190px;
+    margin-top: 0;
+    margin-bottom: 12px;
+  }
 }
 
 .tools {

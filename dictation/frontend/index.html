@@ -17,11 +17,39 @@
         <span class="dot"></span>
         <span id="pillText">Connecting...</span>
       </div>
+      <button class="tbtn" id="teleprompterToggle" title="Toggle Teleprompter script panel">📜 Teleprompter</button>
       <button class="icon" id="gear" title="Developer tools" aria-label="Developer tools">⚙</button>
     </div>
   </header>
 
   <main>
+    <!-- Teleprompter Side Panel (Reference Script Only) -->
+    <aside class="teleprompter" id="teleprompter" aria-label="Teleprompter Script Reader">
+      <div class="teleprompter-header">
+        <div class="teleprompter-title">
+          <span>📜 Teleprompter</span>
+          <span class="teleprompter-tag">Script</span>
+        </div>
+        <div class="teleprompter-actions">
+          <button class="icon-sm" id="teleprompterFontDec" title="Decrease font size" aria-label="Decrease font size">A-</button>
+          <button class="icon-sm" id="teleprompterFontInc" title="Increase font size" aria-label="Increase font size">A+</button>
+          <button class="icon-sm" id="teleprompterClear" title="Clear script" aria-label="Clear script">Clear</button>
+          <button class="icon-sm" id="teleprompterClose" title="Hide teleprompter" aria-label="Hide teleprompter">✕</button>
+        </div>
+      </div>
+      <div class="teleprompter-body">
+        <textarea
+          id="teleprompterText"
+          placeholder="Paste or write the text you plan to speak here...&#10;&#10;Use this as your reading script while recording."
+          spellcheck="false"
+        ></textarea>
+      </div>
+      <div class="teleprompter-footer">
+        <span id="teleprompterStats">0 words</span>
+        <span class="teleprompter-note">Visual guide only</span>
+      </div>
+    </aside>
+
     <div class="col">
       <div class="tools">
         <span id="count"></span>

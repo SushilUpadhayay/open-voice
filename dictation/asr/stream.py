@@ -14,6 +14,7 @@ class ASRChunkResult:
     rtf: float
     is_pause: bool
     audio_duration_sec: float
+    tps: float = 0.0
 
 
 class NemotronStreamSession:
@@ -27,7 +28,7 @@ class NemotronStreamSession:
         asr_client: Optional[NemotronASRClient] = None,
         silence_pause_ms: float = 350.0,
         min_audio_bytes: int = 22400,       # 0.7s @ 16kHz 16-bit mono
-        max_continuous_bytes: int = 64000,  # 2.0s continuous speech threshold
+        max_continuous_bytes: int = 96000,  # 3.0s continuous speech threshold
     ):
         self.asr = asr_client or NemotronASRClient()
         self.vad = EnergyVAD(min_silence_ms=silence_pause_ms)
@@ -63,8 +64,8 @@ class NemotronStreamSession:
             # Condition 1: Speech followed by pause (>= 350ms) and buffer has enough audio
             if is_pause and len(self.audio_buffer) >= self.min_audio_bytes:
                 should_transcribe = True
-            # Condition 2: Continuous speech exceeded 2.2s (avoid latency buildup)
-            elif (now - self.last_transcribe_time >= 2.2) and len(self.audio_buffer) >= self.max_continuous_bytes:
+            # Condition 2: Continuous speech exceeded 3.0s (avoid latency buildup without chopping phrases)
+            elif (now - self.last_transcribe_time >= 3.0) and len(self.audio_buffer) >= self.max_continuous_bytes:
                 should_transcribe = True
 
         if should_transcribe:
@@ -81,12 +82,16 @@ class NemotronStreamSession:
             )
 
             if raw_text:
+                words = len(raw_text.split())
+                tokens = max(1, round(words * 1.33))
+                tps = round(tokens / (latency_ms / 1000.0), 1) if latency_ms > 0 else 0.0
                 return ASRChunkResult(
                     text=raw_text,
                     latency_ms=round(latency_ms, 1),
                     rtf=round(rtf, 2),
                     is_pause=is_pause,
                     audio_duration_sec=round(audio_duration, 2),
+                    tps=tps,
                 )
 
         return None
@@ -107,12 +112,16 @@ class NemotronStreamSession:
             )
 
             if raw_text:
+                words = len(raw_text.split())
+                tokens = max(1, round(words * 1.33))
+                tps = round(tokens / (latency_ms / 1000.0), 1) if latency_ms > 0 else 0.0
                 return ASRChunkResult(
                     text=raw_text,
                     latency_ms=round(latency_ms, 1),
                     rtf=round(rtf, 2),
                     is_pause=True,
                     audio_duration_sec=round(audio_duration, 2),
+                    tps=tps,
                 )
 
         self.reset()

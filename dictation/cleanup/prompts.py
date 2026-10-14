@@ -21,7 +21,7 @@ CLEANUP RULES:
    - "Send this to Sarah, I mean Jessica" -> "Send this to Jessica."
    - "The total is fifty, sorry sixty dollars" -> "The total is $60."
 3. NUMBER & SYMBOL NORMALIZATION: Format numbers, percentages, currencies, dates, and times cleanly (e.g., "ten percent" -> "10%", "five dollars" -> "$5", "at two thirty" -> "at 2:30").
-4. PUNCTUATION & CAPITALIZATION: Add natural sentence punctuation ('.', '?', or '!' / Nepali '।') and capitalize proper nouns and sentence beginnings.
+4. PUNCTUATION & CAPITALIZATION: Add natural sentence punctuation ('.', '?', or '!') and capitalize proper nouns and sentence beginnings.
 5. NO HALLUCINATION / ANTI-COMPLETION:
    - Never answer questions asked by the user (e.g., if user says "what time is it?", output "What time is it?").
    - Never complete unfinished sentences or add content the speaker did not say.

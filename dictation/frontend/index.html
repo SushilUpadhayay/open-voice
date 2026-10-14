@@ -1,0 +1,100 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Streaming Dictation and Polish</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Instrument+Sans:wght@400;500;600&family=Newsreader:ital,wght@0,400;0,500;1,400&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+  <header>
+    <div class="brand">Open Voice</div>
+    <div class="right">
+      <div class="pill" id="pill" data-s="connecting">
+        <span class="dot"></span>
+        <span id="pillText">Connecting...</span>
+      </div>
+      <button class="icon" id="gear" title="Developer tools" aria-label="Developer tools">⚙</button>
+    </div>
+  </header>
+
+  <main>
+    <div class="col">
+      <div class="tools">
+        <span id="count"></span>
+        <div class="btns" id="actions" hidden>
+          <button class="tbtn" id="clearBtn">Clear</button>
+          <button class="tbtn primary" id="copyBtn">Copy text</button>
+        </div>
+      </div>
+      <div class="page" id="page">
+        <div class="empty" id="emptyState">
+          <h2>Say it or type it</h2>
+          <p>Press Space and start talking, or use the box below.</p>
+          <div class="legend">
+            <span class="d">gray italic is a draft</span>
+            <span class="c">white is cleaned</span>
+          </div>
+        </div>
+        <div class="text polished-content" id="polishedText" contenteditable="true" spellcheck="false"></div>
+      </div>
+    </div>
+  </main>
+
+  <footer>
+    <div class="dock">
+      <div class="bar" id="bar">
+        <input id="directTextInput" placeholder="Type something to clean up…" aria-label="Type text">
+        <div class="wave" id="wave"></div>
+        <button class="send" id="directSendBtn">Send</button>
+        <button class="mic" id="recordBtn" aria-label="Start or stop dictation">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">
+            <rect x="9" y="3" width="6" height="12" rx="3"/>
+            <path d="M5 11a7 7 0 0 0 14 0M12 18v3"/>
+          </svg>
+        </button>
+      </div>
+      <div class="hint">
+        <span>Press Space to talk</span>
+        <span id="statFooter">Speech -- ms &nbsp; Cleanup -- s</span>
+      </div>
+    </div>
+  </footer>
+
+  <aside class="drawer" id="drawer">
+    <h3>Developer tools <button class="icon" id="closeDrawer" aria-label="Close">✕</button></h3>
+    <div class="box">
+      <b>Test with a WAV file</b>
+      Streams a 16 kHz mono file as if you were speaking.
+      <div class="file-upload-box drop" id="dropZone">
+        <input type="file" id="wavFileInput" accept=".wav">
+        <p>Drop a WAV here, or <span>browse</span></p>
+      </div>
+      <button class="tbtn primary" id="testHi3Btn" style="width:100%">Run test with hi3.wav</button>
+    </div>
+    <div class="box">
+      <b>Performance</b>
+      <div class="row"><span>Speech speed</span><span id="statRtf">--</span></div>
+      <div class="row"><span>Speech latency</span><span id="statAsrLat">-- ms</span></div>
+      <div class="row"><span>Speech TPS (Nemotron)</span><span id="statAsrTps">-- tps</span></div>
+      <div class="row"><span>Cleanup latency</span><span id="statLlmLat">-- ms</span></div>
+      <div class="row"><span>Cleanup TPS (Gemini)</span><span id="statLlmTps">-- tps</span></div>
+    </div>
+    <div class="box">
+      <b>Voice Activity (VAD)</b>
+      <div class="row"><span>VAD Status</span><span id="vadStatus">Standby</span></div>
+    </div>
+    <div class="box">
+      <b>Raw ASR Log (Debug)</b>
+      <div id="rawLog" class="raw-log">(No raw speech received yet)</div>
+    </div>
+  </aside>
+
+  <div id="toast" class="toast"></div>
+
+  <script src="/static/app.js"></script>
+</body>
+</html>

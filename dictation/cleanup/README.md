@@ -34,5 +34,5 @@ This module implements a streaming, sentence-level dictation cleanup system powe
 ## Running the Test
 
 ```bash
-.venv\Scripts\python.exe d:\open-voice\v3\cleanup\test_cleanup.py
+.venv\Scripts\python.exe d:\open-voice\dictation\cleanup\test_cleanup.py
 ```

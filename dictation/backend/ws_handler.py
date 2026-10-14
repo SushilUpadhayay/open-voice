@@ -10,8 +10,8 @@ from ..cleanup import WisprFlowCleanupEngine, CleanupConfig
 class DictationWebSocketHandler:
     """
     Integration layer connecting client WebSocket transport to:
-    - v3/asr: NemotronStreamSession (all ASR & VAD running logic)
-    - v3/cleanup: WisprFlowCleanupEngine (all cleanup & LLM polish running logic)
+    - dictation/asr: NemotronStreamSession (all ASR & VAD running logic)
+    - dictation/cleanup: WisprFlowCleanupEngine (all cleanup & LLM polish running logic)
     """
 
     def __init__(
@@ -34,14 +34,27 @@ class DictationWebSocketHandler:
         )
 
         # 2. Initialize Cleanup running engine (owns Wispr Flow segmentation and Gemini polish)
+        async def on_sentence_started_event(event):
+            try:
+                await websocket.send_json({
+                    "type": "sentence_cleaning",
+                    "sentence_id": event["sentence_id"],
+                    "sentence_index": event["sentence_index"],
+                    "raw_sentence": event["raw_sentence"],
+                })
+            except Exception:
+                pass
+
         async def on_sentence_polished_event(event):
             try:
                 await websocket.send_json({
                     "type": "sentence_polished",
+                    "sentence_id": event["sentence_id"],
                     "sentence_index": event["sentence_index"],
                     "raw_sentence": event["raw_sentence"],
                     "polished_sentence": event["polished_sentence"],
                     "latency_ms": event["latency_ms"],
+                    "tps": event.get("tps", 0.0),
                     "timestamp": event["timestamp"],
                 })
             except Exception:
@@ -49,6 +62,7 @@ class DictationWebSocketHandler:
 
         cleaner = WisprFlowCleanupEngine(
             config=self.cleanup_config,
+            on_sentence_started=lambda evt: asyncio.create_task(on_sentence_started_event(evt)),
             on_sentence_polished=lambda evt: asyncio.create_task(on_sentence_polished_event(evt)),
         )
 
@@ -70,12 +84,13 @@ class DictationWebSocketHandler:
                             "tail": asr_chunk.text,
                             "asr_latency_ms": asr_chunk.latency_ms,
                             "rtf": asr_chunk.rtf,
+                            "tps": asr_chunk.tps,
                         })
 
                         # Feed into Cleanup module (dispatches concurrent Wispr Flow polish)
                         await cleaner.feed_stream(asr_chunk.text, is_pause=asr_chunk.is_pause)
 
-                # Case B: Control signals (stop, reset)
+                # Case B: Control signals (stop, reset, text_input)
                 elif "text" in message and message["text"]:
                     data = json.loads(message["text"])
                     msg_type = data.get("type")
@@ -89,6 +104,7 @@ class DictationWebSocketHandler:
                                 "tail": final_asr.text,
                                 "asr_latency_ms": final_asr.latency_ms,
                                 "rtf": final_asr.rtf,
+                                "tps": final_asr.tps,
                             })
                             await cleaner.feed_stream(final_asr.text, is_pause=True)
 
@@ -104,6 +120,9 @@ class DictationWebSocketHandler:
 
                     elif msg_type == "reset":
                         asr_session.reset()
+
+                    elif msg_type == "text_input":
+                        await cleaner.feed_typed_text(data.get("text", ""))
 
         except WebSocketDisconnect:
             pass

@@ -8,7 +8,7 @@ ROOT = Path(__file__).parents[2].resolve()
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
-from v3.cleanup import WisprFlowCleanupEngine, CleanupConfig
+from dictation.cleanup import WisprFlowCleanupEngine, CleanupConfig
 
 async def main():
     print("=" * 70)

@@ -36,36 +36,35 @@ class AgentResult:
         return self.outcome == "no_matching_tool"
 
 
-SYSTEM_PROMPT_TEMPLATE = """You are System 2, a fast and helpful Nepali voice command agent.
+SYSTEM_PROMPT_TEMPLATE = """You are System 2, a fast and helpful voice command agent.
 
 Current Reference Context:
 - Date: {current_date} (YYYY-MM-DD)
 - Day of Week: {current_weekday}
-- Timezone: Asia/Kathmandu (UTC+5:45)
 
 Rules for interpretation:
 1. Dates and times MUST be resolved relative to the reference date provided above:
-   - "आज" = {current_date}
-   - "भोलि" = {tomorrow_date}
-   - "पर्सि" = {day_after_tomorrow_date}
-   - Time format must be 24-hour HH:MM (e.g., "बिहान १० बजे" -> 10:00, "दिउँसो २ बजे" -> 14:00, "साँझ ५ बजे" -> 17:00, "साँझ ६ बजे" -> 18:00).
-   - If the user corrects themselves (e.g. "भोलि होइन पर्सि", "बिहान होइन दिउँसो", "छ बजे अँ पाँच बजे"), strictly honor the corrected information.
+   - "today" = {current_date}
+   - "tomorrow" = {tomorrow_date}
+   - "day after tomorrow" = {day_after_tomorrow_date}
+   - Time format must be 24-hour HH:MM (e.g., "10 AM" -> 10:00, "2 PM" -> 14:00, "5 PM" -> 17:00, "6:30 PM" -> 18:30).
+   - If the user corrects themselves (e.g. "tomorrow no wait day after tomorrow", "10 am actually 2 pm"), strictly honor the corrected information.
 
 2. Available tools:
-   - send_email: requires "to", "subject", "body".
-   - create_calendar_event: requires "title", "date", "start_time". "attendees" is optional; NEVER ask for attendees if they are not mentioned. If no specific meeting topic is given other than "बैठक" or "छलफल", use "बैठक" as the title.
-   - set_reminder: requires "text", "date", "time". If no specific task is given other than "सम्झाऊ", use "सम्झाउने" or the general topic as text.
+   - send_email: requires "to", "subject", "body". Create subject from the body, son't ask about the topic.
+   - create_calendar_event: requires "title", "date", "start_time". "attendees" is optional; NEVER ask for attendees if they are not mentioned. If the user does not explicitly specify a title, automatically synthesize the title (e.g. "Meeting with [Name]" or "Meeting") and proceed with calling the tool. NEVER ask for a title if date and time are present.
+   - set_reminder: requires "text", "date", "time". If no specific task is given other than "remind me", use "Reminder" or the general topic as text.
 
 3. Missing details rule:
-   - If an essential argument is missing (e.g., no recipient for email, no email message/subject, no time or date for an event/reminder), DO NOT call any tool and DO NOT fabricate or guess information.
-   - Ask exactly ONE short, natural question in Nepali to clarify the missing detail.
+   - If an essential argument is missing (e.g., no recipient for email, no email message/subject, no time or date for an event/reminder; note: meeting title defaults to "Meeting"), DO NOT call any tool and DO NOT fabricate or guess information.
+   - Ask exactly ONE short, natural clarification question to ask for the missing detail.
 
 4. No matching tool rule:
-   - If the user asks for an action that does not match any of the available tools (e.g., "चिया बनाइदेऊ", "गीत बजाऊ", "ढोका बन्द गर"), DO NOT invent a tool and DO NOT call any function.
-   - Reply politely in Nepali stating that you cannot perform this task (e.g., "म यो काम गर्न सक्दिनँ।").
+   - If the user asks for an action that does not match any of the available tools (e.g., "make tea", "play music", "turn on the lights"), DO NOT invent a tool and DO NOT call any function.
+   - Reply politely stating that you cannot perform this task (e.g., "I cannot perform this task as I do not have a tool for it.").
 
 5. Language:
-   - All questions, replies, and confirmations to the user must be in concise, natural Nepali.
+   - All questions, replies, and confirmations to the user must be in concise, natural English.
 {tools_mode_instruction}"""
 
 
@@ -158,7 +157,7 @@ class System2Agent:
         else:
             tools_mode_instruction = (
                 "6. Tools are DISABLED. Do NOT call any function or tool. "
-                "Write a short, natural Nepali sentence explaining what action you would have performed."
+                "Write a short, natural English sentence explaining what action you would have performed."
             )
 
         system_prompt = SYSTEM_PROMPT_TEMPLATE.format(
@@ -185,7 +184,7 @@ class System2Agent:
         if not candidates:
             latency_ms = (time.perf_counter() - start_time) * 1000.0
             return AgentResult(
-                reply="कुनै प्रतिक्रिया प्राप्त हुन सकेन।",
+                reply="No response could be generated.",
                 tools_enabled=tools_enabled,
                 latency_ms=round(latency_ms, 2),
             )
@@ -203,7 +202,7 @@ class System2Agent:
             tool_result = execute_dummy_tool(fn_name, fn_args, log_path=self.log_path)
             tool_call_latency_ms = (time.perf_counter() - t_tool_0) * 1000.0
 
-            # Send functionResponse back to Gemini to get a natural Nepali reply
+            # Send functionResponse back to Gemini to get a natural English reply
             followup_contents = [
                 {"role": "user", "parts": [{"text": text}]},
                 {"role": "model", "parts": [first_part]},
@@ -231,7 +230,7 @@ class System2Agent:
                 .strip()
             )
             if not reply_text:
-                reply_text = f"{fn_name} कार्य सम्पन्न भयो।"
+                reply_text = f"{fn_name} completed successfully."
 
             latency_ms = (time.perf_counter() - start_time) * 1000.0
             return AgentResult(
@@ -251,11 +250,16 @@ class System2Agent:
         if not tools_enabled:
             outcome = "tools_disabled"
         else:
+            reply_lower = reply_text.lower()
             is_refusal = (
-                "सक्दिन" in reply_text
-                or "गर्न मिल्दैन" in reply_text
-                or "उपलब्ध छैन" in reply_text
-                or "सहायता गर्न सक्दिन" in reply_text
+                "cannot" in reply_lower
+                or "can't" in reply_lower
+                or "unable to" in reply_lower
+                or "not able to" in reply_lower
+                or "don't have" in reply_lower
+                or "do not have" in reply_lower
+                or "not supported" in reply_lower
+                or "sorry" in reply_lower
             )
             if is_refusal:
                 outcome = "no_matching_tool"

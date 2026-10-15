@@ -1,14 +1,18 @@
 <!DOCTYPE html>
 <html lang="en">
+
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Streaming Dictation and Polish</title>
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link href="https://fonts.googleapis.com/css2?family=Instrument+Sans:wght@400;500;600&family=Newsreader:ital,wght@0,400;0,500;1,400&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+  <link
+    href="https://fonts.googleapis.com/css2?family=Instrument+Sans:wght@400;500;600&family=Newsreader:ital,wght@0,400;0,500;1,400&family=JetBrains+Mono:wght@400;500&display=swap"
+    rel="stylesheet">
   <link rel="stylesheet" href="/static/style.css">
 </head>
+
 <body>
   <header>
     <div class="brand">Open Voice</div>
@@ -80,13 +84,13 @@
         <button class="send" id="directSendBtn">Send</button>
         <button class="mic" id="recordBtn" aria-label="Start or stop dictation">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">
-            <rect x="9" y="3" width="6" height="12" rx="3"/>
-            <path d="M5 11a7 7 0 0 0 14 0M12 18v3"/>
+            <rect x="9" y="3" width="6" height="12" rx="3" />
+            <path d="M5 11a7 7 0 0 0 14 0M12 18v3" />
           </svg>
         </button>
       </div>
       <div class="hint">
-        <span>Press Space to talk</span>
+        <span>Press Space to talk (stops on 3s pause)</span>
         <span id="statFooter">Speech -- ms &nbsp; Cleanup -- s</span>
       </div>
     </div>
@@ -96,7 +100,6 @@
     <h3>Developer tools <button class="icon" id="closeDrawer" aria-label="Close">✕</button></h3>
     <div class="box">
       <b>Test with a WAV file</b>
-      Streams a 16 kHz mono file as if you were speaking.
       <div class="file-upload-box drop" id="dropZone">
         <input type="file" id="wavFileInput" accept=".wav">
         <p>Drop a WAV here, or <span>browse</span></p>
@@ -107,7 +110,11 @@
       <b>Performance</b>
       <div class="row"><span>Speech speed</span><span id="statRtf">--</span></div>
       <div class="row"><span>Speech latency</span><span id="statAsrLat">-- ms</span></div>
+<<<<<<< HEAD
       <div class="row"><span>Speech TPS (Parakeet)</span><span id="statAsrTps">-- tps</span></div>
+=======
+      <div class="row"><span>Speech TPS (Parakeet EN)</span><span id="statAsrTps">-- tps</span></div>
+>>>>>>> 2dc7fb33e284c705fab3378cfe353f1ab4ccac70
       <div class="row"><span>Cleanup latency</span><span id="statLlmLat">-- ms</span></div>
       <div class="row"><span>Cleanup TPS (Gemini)</span><span id="statLlmTps">-- tps</span></div>
     </div>
@@ -125,4 +132,5 @@
 
   <script src="/static/app.js"></script>
 </body>
+
 </html>

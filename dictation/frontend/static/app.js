@@ -301,7 +301,7 @@ class DictationApp {
       this.handleSentenceCleaning(msg);
     } else if (msg.type === 'sentence_polished') {
       this.handleSentencePolished(msg);
-    } else if (msg.type === 'finalized') {
+    } else if (msg.type === 'finalized' || msg.type === 'session_ended') {
       this.handleFinalized(msg);
     } else if (msg.type === 'error') {
       this.showToast(`Error: ${msg.message}`);
@@ -641,7 +641,11 @@ class DictationApp {
   }
 
   handleFinalized(msg) {
-    this.showToast(`Dictation finished: ${msg.sentences_count} sentences polished!`);
+    if (this.isRecording) {
+      this.stopRecording(false);
+    }
+    const reasonText = msg.reason === 'pause_timeout' ? ' (1s pause)' : '';
+    this.showToast(`Dictation finished${reasonText}: ${msg.sentences_count} sentences polished!`);
     if (this.bar) this.bar.classList.remove('rec');
     this.updateStatusPill();
   }
@@ -731,21 +735,28 @@ class DictationApp {
     }
   }
 
-  stopRecording() {
+  stopRecording(sendStop = true) {
     this.isRecording = false;
     this.updateButtonStates();
     if (this.bar) this.bar.classList.remove('rec');
     this.updateStatusPill();
 
-    if (this.ws && this.ws.readyState === WebSocket.OPEN) {
+    if (sendStop && this.ws && this.ws.readyState === WebSocket.OPEN) {
       this.ws.send(JSON.stringify({ type: 'stop' }));
     }
 
     if (this.mediaStream) {
       this.mediaStream.getTracks().forEach((track) => track.stop());
+      this.mediaStream = null;
     }
-    if (this.processor) this.processor.disconnect();
-    if (this.audioContext) this.audioContext.close();
+    if (this.processor) {
+      this.processor.disconnect();
+      this.processor = null;
+    }
+    if (this.audioContext) {
+      this.audioContext.close();
+      this.audioContext = null;
+    }
 
     cancelAnimationFrame(this.animationFrameId);
     this.resetWaveform();
@@ -933,7 +944,7 @@ class DictationApp {
       const asrModel = document.getElementById('asrModelName');
       const llmModel = document.getElementById('llmModelName');
       if (asrModel && data.asr && data.asr.model) {
-        asrModel.textContent = 'Nemotron 3.5 (Vulkan GPU)';
+        asrModel.textContent = data.asr.model_name || data.asr.model;
       }
       if (llmModel && data.cleaner && data.cleaner.model) {
         llmModel.textContent = 'Gemini 2.5 Flash (Mumbai)';

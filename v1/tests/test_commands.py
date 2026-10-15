@@ -17,7 +17,8 @@ for p in [str(WORKSPACE_ROOT), str(V1_DIR)]:
 
 from v1.config import load_settings, load_customer_config
 from v1.agent.system2 import System2Agent
-from v1.cleanup.gemini_cleanup import GeminiCleanup
+from dictation.cleanup.config import CleanupConfig
+from dictation.cleanup.engine import WisprFlowCleanupEngine
 
 FIXED_REFERENCE_DATE = datetime(2026, 10, 12, 9, 0, 0)  # Monday, 2026-10-12
 
@@ -76,11 +77,17 @@ def run_command_benchmark(
         model_name=vertex_cfg.get("agent_model", "gemini-2.5-flash"),
         log_path=log_file,
     )
-    cleanup = GeminiCleanup(
+    from v1.orchestrator.runner import Orchestrator
+    cleanup_cfg = CleanupConfig(
         project_id=vertex_cfg["project_id"],
         region=vertex_cfg["region"],
-        key_file=key_file,
+        key_file=str(key_file),
         model_name=vertex_cfg.get("cleanup_model", "gemini-2.5-flash"),
+    )
+    orchestrator = Orchestrator(
+        decider=None,
+        cleanup_config=cleanup_cfg,
+        settings=settings,
     )
 
     # Load test sentences
@@ -116,7 +123,7 @@ def run_command_benchmark(
             # Input prep
             cleanup_ms = 0.0
             if mode == "cleaned":
-                cleaned_text, cleanup_ms, _, _, _ = cleanup.clean(raw_text)
+                cleaned_text, cleanup_ms, _, _, _ = orchestrator.clean(raw_text)
                 input_text = cleaned_text
             else:
                 input_text = raw_text

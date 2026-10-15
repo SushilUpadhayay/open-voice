@@ -77,7 +77,114 @@ document.addEventListener("DOMContentLoaded", () => {
   if (switchTTS) switchTTS.addEventListener("change", updateModeIndicator);
   updateModeIndicator();
 
-  // 2. Microphone Capture with Real-Time Audio Meter & Silence Auto-Stop
+  // 2. Real-Time WebSocket Streaming & Microphone Capture
+  let streamWs = null;
+  let streamStartTime = 0;
+  let streamRawText = "";
+  let streamPolishedSentences = {};
+
+  function initWebSocket() {
+    const proto = window.location.protocol === "https:" ? "wss:" : "ws:";
+    const wsUrl = `${proto}//${window.location.host}/ws/stream`;
+    try {
+      streamWs = new WebSocket(wsUrl);
+      streamWs.binaryType = "arraybuffer";
+
+      streamWs.onopen = () => {
+        console.log("[WebSocket] Connected to /ws/stream");
+      };
+
+      streamWs.onmessage = (event) => {
+        try {
+          const msg = JSON.parse(event.data);
+          handleStreamMessage(msg);
+        } catch (err) {
+          console.error("Failed to parse WebSocket message:", err);
+        }
+      };
+
+      streamWs.onclose = () => {
+        console.log("[WebSocket] Disconnected from /ws/stream. Reconnecting in 2s...");
+        setTimeout(initWebSocket, 2000);
+      };
+
+      streamWs.onerror = (err) => {
+        console.warn("[WebSocket] Error on stream socket:", err);
+      };
+    } catch (e) {
+      console.warn("[WebSocket] Could not open WebSocket:", e);
+    }
+  }
+
+  initWebSocket();
+
+  function resampleTo16k(audioData, origSampleRate) {
+    if (!origSampleRate || origSampleRate === 16000) return audioData;
+    const ratio = origSampleRate / 16000;
+    const newLength = Math.round(audioData.length / ratio);
+    const result = new Float32Array(newLength);
+    for (let i = 0; i < newLength; i++) {
+      const origIndex = i * ratio;
+      const indexFloor = Math.floor(origIndex);
+      const indexCeil = Math.min(audioData.length - 1, Math.ceil(origIndex));
+      const fraction = origIndex - indexFloor;
+      result[i] = audioData[indexFloor] * (1 - fraction) + audioData[indexCeil] * fraction;
+    }
+    return result;
+  }
+
+  function floatTo16BitPCM(float32Array) {
+    const buffer = new Int16Array(float32Array.length);
+    for (let i = 0; i < float32Array.length; i++) {
+      const s = Math.max(-1, Math.min(1, float32Array[i]));
+      buffer[i] = s < 0 ? s * 0x8000 : s * 0x7fff;
+    }
+    return buffer;
+  }
+
+  function handleStreamMessage(msg) {
+    if (msg.type === "raw_tail") {
+      if (rawTranscript.textContent === "Listening... speak now" || rawTranscript.textContent === "Transcribing live...") {
+        rawTranscript.textContent = "";
+      }
+      streamRawText = (streamRawText ? streamRawText + " " : "") + msg.tail;
+      rawTranscript.textContent = streamRawText;
+      micStatus.textContent = `Speaking... ASR ${Math.round(msg.asr_latency_ms)} ms`;
+    } else if (msg.type === "sentence_cleaning") {
+      micStatus.textContent = `Polishing sentence #${msg.sentence_index}...`;
+      if (cleanedTranscript.textContent === "Waiting for cleanup..." || cleanedTranscript.textContent === "—") {
+        cleanedTranscript.textContent = msg.raw_sentence;
+      }
+    } else if (msg.type === "sentence_polished") {
+      streamPolishedSentences[msg.sentence_index] = msg.polished_sentence;
+      const ordered = Object.keys(streamPolishedSentences)
+        .sort((a, b) => Number(a) - Number(b))
+        .map((k) => streamPolishedSentences[k]);
+      cleanedTranscript.textContent = ordered.join(" ");
+      micStatus.textContent = `Cleaned sentence #${msg.sentence_index} (${Math.round(msg.latency_ms)} ms)`;
+    } else if (msg.type === "branch_decided") {
+      if (msg.branch === "command") {
+        branchBadge.textContent = `Command (${Math.round(msg.confidence * 100)}%)`;
+        branchBadge.className = "branch-badge command";
+      } else {
+        branchBadge.textContent = "Dictation";
+        branchBadge.className = "branch-badge dictation";
+      }
+    } else if (msg.type === "finalized") {
+      const clientTotalMs = performance.now() - streamStartTime;
+      renderResult(msg, clientTotalMs, streamStartTime);
+      micStatus.textContent = "Ready! Click mic to speak again.";
+      if (isRecording) {
+        stopRecordingCleanup();
+      }
+    } else if (msg.type === "error") {
+      micStatus.textContent = "Error: " + msg.message;
+      if (isRecording) {
+        stopRecordingCleanup();
+      }
+    }
+  }
+
   micBtn.addEventListener("click", () => {
     if (isRecording) {
       stopRecording();
@@ -90,6 +197,24 @@ document.addEventListener("DOMContentLoaded", () => {
     try {
       pcmData = [];
       speechStarted = false;
+      streamStartTime = performance.now();
+      streamRawText = "";
+      streamPolishedSentences = {};
+
+      rawTranscript.textContent = "Listening... speak now";
+      cleanedTranscript.textContent = switchCleanup.checked ? "Waiting for cleanup..." : "—";
+      branchBadge.textContent = switchActions.checked ? "Detecting..." : "Dictation";
+      branchBadge.className = switchActions.checked ? "branch-badge" : "branch-badge dictation";
+
+      // Configure server streaming session
+      if (streamWs && streamWs.readyState === WebSocket.OPEN) {
+        streamWs.send(JSON.stringify({
+          type: "config",
+          actions: switchActions.checked,
+          cleanup: switchCleanup.checked,
+          tools: switchTools.checked,
+        }));
+      }
 
       audioContext = new (window.AudioContext || window.webkitAudioContext)({
         sampleRate: 16000,
@@ -116,6 +241,13 @@ document.addEventListener("DOMContentLoaded", () => {
         const channel = e.inputBuffer.getChannelData(0);
         pcmData.push(new Float32Array(channel));
 
+        // Stream real-time 16kHz PCM frames over WebSocket
+        if (streamWs && streamWs.readyState === WebSocket.OPEN) {
+          const resampled = resampleTo16k(channel, audioContext.sampleRate);
+          const pcm16 = floatTo16BitPCM(resampled);
+          streamWs.send(pcm16.buffer);
+        }
+
         // Volume Calculation
         let sum = 0;
         for (let i = 0; i < channel.length; i++) {
@@ -123,10 +255,9 @@ document.addEventListener("DOMContentLoaded", () => {
         }
         const rms = Math.sqrt(sum / channel.length);
 
-        // Voice Activity Detection & Silence Auto-Stop (~1.2s silence)
+        // Voice Activity Detection & Silence Auto-Stop (3s)
         if (rms > 0.025) {
           speechStarted = true;
-          micStatus.textContent = "Speaking detected... (Listening)";
           if (silenceTimer) {
             clearTimeout(silenceTimer);
             silenceTimer = null;
@@ -134,9 +265,9 @@ document.addEventListener("DOMContentLoaded", () => {
         } else if (speechStarted) {
           if (!silenceTimer) {
             silenceTimer = setTimeout(() => {
-              console.log("[Mic] Auto-stopping after 1.2s silence");
+              console.log("[Mic] Auto-stopping after silence pause");
               stopRecording();
-            }, 1200);
+            }, 3000);
           }
         }
       };
@@ -174,8 +305,7 @@ document.addEventListener("DOMContentLoaded", () => {
     animFrameId = requestAnimationFrame(updateVisualizerMeter);
   }
 
-  function stopRecording() {
-    if (!isRecording) return;
+  function stopRecordingCleanup() {
     isRecording = false;
 
     if (silenceTimer) {
@@ -190,33 +320,49 @@ document.addEventListener("DOMContentLoaded", () => {
     micBtn.classList.remove("recording");
     visualizer.classList.remove("active");
     visualizerBars.forEach((bar) => (bar.style.height = "6px"));
-    micStatus.textContent = "Processing audio...";
 
     if (mediaStream) {
       mediaStream.getTracks().forEach((track) => track.stop());
+      mediaStream = null;
     }
     if (processorNode) {
       processorNode.disconnect();
+      processorNode = null;
     }
     if (audioContext && audioContext.state !== "closed") {
       audioContext.close();
+      audioContext = null;
+    }
+  }
+
+  function stopRecording() {
+    if (!isRecording) return;
+    micStatus.textContent = "Finalizing...";
+
+    // Primary: Instant server finalization via WebSocket
+    if (streamWs && streamWs.readyState === WebSocket.OPEN) {
+      streamWs.send(JSON.stringify({ type: "stop" }));
+      stopRecordingCleanup();
+      return;
     }
 
-    // Merge PCM buffers
+    // Fallback: Upload full WAV via HTTP POST if WebSocket is disconnected
+    stopRecordingCleanup();
+
     let totalLength = 0;
     for (const chunk of pcmData) {
       totalLength += chunk.length;
     }
+    if (totalLength < 3200) {
+      micStatus.textContent = "Audio too short. Please speak again.";
+      return;
+    }
+
     const merged = new Float32Array(totalLength);
     let offset = 0;
     for (const chunk of pcmData) {
       merged.set(chunk, offset);
       offset += chunk.length;
-    }
-
-    if (totalLength < 3200) {
-      micStatus.textContent = "Audio too short. Please speak again.";
-      return;
     }
 
     const wavBlob = encodeWAV(merged, 16000);

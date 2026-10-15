@@ -4,7 +4,10 @@ import subprocess
 import sys
 from pathlib import Path
 
+from .client import DEFAULT_MODEL
+
 HANDY_EXE = Path(os.environ.get("LOCALAPPDATA", "")) / "Handy" / "handy.exe"
+<<<<<<< HEAD
 DEFAULT_MODEL = os.environ.get(
     "DICTATION_ASR_MODEL",
     "handy-computer/parakeet-unified-en-0.6b-gguf/parakeet-unified-en-0.6b-Q8_0.gguf",
@@ -13,6 +16,12 @@ DEFAULT_MODEL = os.environ.get(
 def transcribe(wav_path: str, model_id: str = DEFAULT_MODEL) -> dict:
     """
     Transcribes a 16 kHz mono 16-bit WAV file using the Parakeet Unified EN engine.
+=======
+
+def transcribe(wav_path: str, model_id: str = DEFAULT_MODEL) -> dict:
+    """
+    Transcribes a 16 kHz mono 16-bit WAV file using the configured Handy model.
+>>>>>>> 2dc7fb33e284c705fab3378cfe353f1ab4ccac70
     """
     wav_file = Path(wav_path).resolve()
     if not wav_file.exists():

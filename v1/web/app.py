@@ -1,12 +1,12 @@
 from datetime import datetime
 from pathlib import Path
-from typing import Any, Dict, List, Optional
+from typing import Optional
 import json
 import os
 import tempfile
 import time
 
-from fastapi import FastAPI, File, Form, HTTPException, Request, Response, UploadFile
+from fastapi import FastAPI, File, Form, HTTPException, Request, Response, UploadFile, WebSocket
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
@@ -24,18 +24,19 @@ for p in [str(WORKSPACE_ROOT), str(V1_DIR)]:
         sys.path.insert(0, p)
 
 from v1.config import load_settings
-from v1.asr.client import IndicConformerClient
+from dictation.asr.client import HandyASRClient
+from dictation.cleanup.config import CleanupConfig
 from v1.decider.gemini_decider import GeminiDecider
-from v1.cleanup.gemini_cleanup import GeminiCleanup
 from v1.agent.system2 import System2Agent
 from v1.orchestrator.runner import Orchestrator
 from v1.tts.vertex_tts import VertexTTS
 from v1.web.cards import build_card_data
+from v1.web.ws_handler import V1StreamingWebSocketHandler
 
 # Initialize components
 settings = load_settings()
 vertex_cfg = settings.get("vertex", {})
-asr_cfg = settings.get("asr", {})
+dictation_cfg = settings.get("dictation", {})
 
 key_file = (V1_DIR / vertex_cfg.get("key_file", "../vertex-key.json")).resolve()
 if not key_file.exists():
@@ -49,11 +50,12 @@ decider = GeminiDecider(
     key_file=key_file,
     model_name=vertex_cfg.get("decider_model", "gemini-2.5-flash"),
 )
-cleanup = GeminiCleanup(
+cleanup_cfg = CleanupConfig(
     project_id=vertex_cfg["project_id"],
     region=vertex_cfg["region"],
-    key_file=key_file,
+    key_file=str(key_file),
     model_name=vertex_cfg.get("cleanup_model", "gemini-2.5-flash"),
+    timeout_seconds=dictation_cfg.get("timeout_seconds", 15),
 )
 agent = System2Agent(
     project_id=vertex_cfg["project_id"],
@@ -64,19 +66,27 @@ agent = System2Agent(
 )
 orchestrator = Orchestrator(
     decider=decider,
-    cleanup=cleanup,
     settings=settings,
+    cleanup_config=cleanup_cfg,
     agent=agent,
 )
-asr_client = IndicConformerClient(
-    endpoint=asr_cfg["endpoint"],
-    timeout_seconds=asr_cfg.get("timeout_seconds", 30),
+asr_client = HandyASRClient(
+    model_id=dictation_cfg.get("model_id"),
+    sample_rate=dictation_cfg.get("sample_rate", 16000),
 )
 tts_client = VertexTTS(
     key_file=key_file,
-    primary_lang="ne-NP",
-    fallback_lang="hi-IN",
-    fallback_voice="hi-IN-Neural2-A",
+    primary_lang="en-US",
+    fallback_lang="en-US",
+    fallback_voice="en-US-Neural2-F",
+)
+
+ws_handler = V1StreamingWebSocketHandler(
+    orchestrator=orchestrator,
+    asr_client=asr_client,
+    cleanup_config=cleanup_cfg,
+    silence_pause_ms=350.0,
+    session_pause_ms=3000.0,
 )
 
 app = FastAPI(title="Open Voice V3 - Web Demo")
@@ -88,6 +98,15 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+
+@app.websocket("/ws/stream")
+async def websocket_stream_endpoint(websocket: WebSocket):
+    """
+    Live bidirectional streaming WebSocket endpoint.
+    Streams 16kHz PCM audio in and real-time raw transcripts & polished sentences out.
+    """
+    await ws_handler.handle_connection(websocket)
 
 
 class ProcessTextRequest(BaseModel):
@@ -146,7 +165,7 @@ async def process_input(
             tmp_path = Path(tmp.name)
 
         try:
-            raw_text, asr_latency_ms = asr_client.transcribe(tmp_path)
+            raw_text, asr_latency_ms, _ = asr_client.transcribe_wav_file(tmp_path)
         finally:
             if tmp_path.exists():
                 try:

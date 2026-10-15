@@ -18,9 +18,9 @@ for p in [str(WORKSPACE_ROOT), str(V1_DIR)]:
         sys.path.insert(0, p)
 
 from v1.config import load_settings
-from v1.asr.client import IndicConformerClient
+from dictation.asr.client import HandyASRClient
+from dictation.cleanup.config import CleanupConfig
 from v1.decider.gemini_decider import GeminiDecider
-from v1.cleanup.gemini_cleanup import GeminiCleanup
 from v1.agent.system2 import System2Agent
 from v1.orchestrator.runner import Orchestrator
 
@@ -464,10 +464,10 @@ def main():
         key_file=key_file,
         model_name=vertex_cfg.get("decider_model", "gemini-2.5-flash"),
     )
-    cleanup = GeminiCleanup(
+    cleanup_cfg = CleanupConfig(
         project_id=vertex_cfg["project_id"],
         region=vertex_cfg["region"],
-        key_file=key_file,
+        key_file=str(key_file),
         model_name=vertex_cfg.get("cleanup_model", "gemini-2.5-flash"),
     )
     agent = System2Agent(
@@ -477,13 +477,10 @@ def main():
         model_name=vertex_cfg.get("agent_model", "gemini-2.5-flash"),
         log_path=V1_DIR / "results" / "tool_calls.log",
     )
-    asr_client = IndicConformerClient(
-        endpoint=asr_cfg["endpoint"],
-        timeout_seconds=asr_cfg.get("timeout_seconds", 30),
-    )
+    asr_client = HandyASRClient()
     orchestrator = Orchestrator(
         decider=decider,
-        cleanup=cleanup,
+        cleanup_config=cleanup_cfg,
         settings=settings,
         agent=agent,
     )

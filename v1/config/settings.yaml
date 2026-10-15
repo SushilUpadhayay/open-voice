@@ -6,9 +6,10 @@ vertex:
   cleanup_model: "gemini-2.5-flash"
   agent_model: "gemini-2.5-flash"
 
+dictation:
+  model_id: "handy-computer/parakeet-unified-en-0.6b-gguf/parakeet-unified-en-0.6b-Q8_0.gguf"
+  sample_rate: 16000
+  timeout_seconds: 15
+
 decider:
   confidence_threshold: 0.75
-
-asr:
-  endpoint: "http://45.115.219.97:20009/indic/transcribe/"
-  timeout_seconds: 30

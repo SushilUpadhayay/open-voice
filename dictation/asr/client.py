@@ -1,5 +1,6 @@
 import io
 import json
+import logging
 import os
 from pathlib import Path
 import subprocess
@@ -9,12 +10,15 @@ from typing import Dict, Optional, Tuple
 import wave
 
 HANDY_EXE = Path(os.environ.get("LOCALAPPDATA", "")) / "Handy" / "handy.exe"
-DEFAULT_MODEL = "handy-computer/nemotron-3.5-asr-streaming-0.6b-gguf/nemotron-3.5-asr-streaming-0.6b-Q8_0.gguf"
+DEFAULT_MODEL = "handy-computer/parakeet-unified-en-0.6b-gguf/parakeet-unified-en-0.6b-Q8_0.gguf"
+MODEL_STATUS_CACHE_SECONDS = 30.0
+
+logger = logging.getLogger(__name__)
 
 
-class NemotronASRClient:
+class HandyASRClient:
     """
-    Client for running Nemotron 3.5 ASR via the local transcribe-cpp / Vulkan GPU engine.
+    Client for running the configured local Handy ASR model via Vulkan or CPU.
     Supports file-based transcription and live in-memory audio buffer decoding.
     """
 
@@ -27,9 +31,47 @@ class NemotronASRClient:
         self.handy_exe = Path(handy_exe_path) if handy_exe_path else HANDY_EXE
         self.model_id = model_id
         self.sample_rate = sample_rate
+        self._model_status_checked_at = 0.0
+        self._model_downloaded = False
 
     def is_available(self) -> bool:
-        return self.handy_exe.exists()
+        return self.handy_exe.exists() and self.is_model_downloaded()
+
+    def is_model_downloaded(self) -> bool:
+        """Check whether the configured Handy model is installed, caching briefly."""
+        now = time.monotonic()
+        if now - self._model_status_checked_at < MODEL_STATUS_CACHE_SECONDS:
+            return self._model_downloaded
+        if not self.handy_exe.exists():
+            self._model_downloaded = False
+            self._model_status_checked_at = now
+            return False
+
+        result = subprocess.run(
+            [str(self.handy_exe), "--list-models", "--json"],
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            text=True,
+            encoding="utf-8",
+            timeout=20,
+        )
+        if result.returncode != 0:
+            raise RuntimeError(
+                "Unable to check Handy's model list: "
+                f"{result.stderr.strip() or result.stdout.strip()}"
+            )
+
+        try:
+            models = json.loads(result.stdout)
+        except json.JSONDecodeError as exc:
+            raise RuntimeError("Handy returned an invalid model list") from exc
+
+        self._model_downloaded = any(
+            model.get("id") == self.model_id and model.get("is_downloaded")
+            for model in models
+        )
+        self._model_status_checked_at = now
+        return self._model_downloaded
 
     @staticmethod
     def pcm_to_wav_bytes(pcm_bytes: bytes, sample_rate: int = 16000) -> bytes:
@@ -53,8 +95,12 @@ class NemotronASRClient:
         wav_file = Path(wav_path).resolve()
         if not wav_file.exists():
             raise FileNotFoundError(f"WAV file not found: {wav_file}")
-        if not self.is_available():
-            raise FileNotFoundError(f"Nemotron engine not found at: {self.handy_exe}")
+        if not self.handy_exe.exists():
+            raise FileNotFoundError(f"Handy ASR engine not found at: {self.handy_exe}")
+        if not self.is_model_downloaded():
+            raise FileNotFoundError(
+                f"ASR model '{self.model_id}' is not downloaded in Handy."
+            )
 
         cmd = [
             str(self.handy_exe),
@@ -74,7 +120,16 @@ class NemotronASRClient:
         latency_ms = (time.perf_counter() - start) * 1000.0
 
         if result.returncode != 0:
-            return "", latency_ms, 0.0
+            detail = result.stderr.strip() or result.stdout.strip()
+            logger.error(
+                "ASR transcription failed exit_code=%s model=%s error=%s",
+                result.returncode,
+                self.model_id,
+                detail,
+            )
+            raise RuntimeError(
+                f"ASR transcription failed (exit code {result.returncode}): {detail}"
+            )
 
         try:
             data = json.loads(result.stdout.strip())
@@ -105,3 +160,6 @@ class NemotronASRClient:
                 os.remove(tmp_path)
             except OSError:
                 pass
+
+
+NemotronASRClient = HandyASRClient

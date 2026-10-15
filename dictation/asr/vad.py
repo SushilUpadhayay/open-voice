@@ -13,15 +13,19 @@ class EnergyVAD:
         energy_threshold: float = 350.0,
         min_silence_ms: float = 350.0,
         min_speech_ms: float = 120.0,
+        session_pause_ms: float = 3000.0,
     ):
         self.energy_threshold = energy_threshold
         self.min_silence_ms = min_silence_ms
         self.min_speech_ms = min_speech_ms
+        self.session_pause_ms = session_pause_ms
 
         self.consecutive_speech_ms: float = 0.0
         self.consecutive_silence_ms: float = 0.0
         self.is_speech_active: bool = False
         self.noise_floor: float = 200.0
+        self.has_spoken: bool = False
+        self._session_pause_triggered: bool = False
 
     def calculate_rms(self, pcm_bytes: bytes) -> float:
         if len(pcm_bytes) < 2:
@@ -51,6 +55,8 @@ class EnergyVAD:
             self.consecutive_silence_ms = 0.0
             if self.consecutive_speech_ms >= self.min_speech_ms:
                 self.is_speech_active = True
+                self.has_spoken = True
+                self._session_pause_triggered = False
             return False
         else:
             self.consecutive_silence_ms += chunk_duration_ms
@@ -62,7 +68,20 @@ class EnergyVAD:
 
             return False
 
+    def is_session_pause(self) -> bool:
+        """
+        Returns True once when consecutive silence reaches session_pause_ms (3.0s)
+        after active speech has occurred.
+        """
+        if self.has_spoken and not self._session_pause_triggered:
+            if self.consecutive_silence_ms >= self.session_pause_ms:
+                self._session_pause_triggered = True
+                return True
+        return False
+
     def reset(self):
         self.consecutive_speech_ms = 0.0
         self.consecutive_silence_ms = 0.0
         self.is_speech_active = False
+        self.has_spoken = False
+        self._session_pause_triggered = False

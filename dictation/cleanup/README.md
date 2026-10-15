@@ -8,13 +8,13 @@ This module implements a streaming, sentence-level dictation cleanup system powe
 2. **Backtracking & Self-Corrections:** Automatically detects mid-sentence corrections and keeps only the intended words (e.g. *"at two, no wait three PM"* → *"at 3 PM."*).
 3. **Number & Symbol Normalization:** Spoken numbers, percentages, and currencies are formatted cleanly (e.g. *"twenty five dollars"* → *"$25"*, *"ten percent"* → *"10%"*).
 4. **Sentence-Level Boundary Detection:** Segments raw streams when terminal punctuation (`.`, `?`, `!`, `।`) or acoustic pauses (silence ≥ 350ms) are detected.
-5. **Parallel LLM Execution:** Dispatches background cleanup tasks immediately upon sentence completion, running alongside Nemotron ASR so perceived latency is near zero.
-6. **Dual Buffer Model:** Keeps both raw Nemotron verbatim text and polished text, supporting instant live preview with an "Undo" safety net.
+5. **Parallel LLM Execution:** Dispatches background cleanup tasks immediately upon sentence completion, running alongside ASR so perceived latency is near zero.
+6. **Dual Buffer Model:** Keeps both raw ASR text and polished text, supporting instant live preview with an "Undo" safety net.
 
 ## Architecture
 
 ```text
-[Nemotron ASR Stream] ──(raw tokens)──► [SentenceSegmenter]
+[ASR Stream] ──(raw tokens)──► [SentenceSegmenter]
                                                │
                                                ├─ (terminal punctuation / pause)
                                                ▼
@@ -23,7 +23,7 @@ This module implements a streaming, sentence-level dictation cleanup system powe
                                                │
                      ┌─────────────────────────┴────────────────────────┐
                      ▼                                                  ▼
-          [Gemini 2.5 Flash (Mumbai)]                        [Nemotron ASR Stream]
+          [Gemini 2.5 Flash (Mumbai)]                        [ASR Stream]
               (asia-south1 Vertex)                         (Continues transcribing
              Wispr Flow Prompting                           next sentence in parallel)
                      │

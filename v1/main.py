@@ -17,7 +17,7 @@ except ImportError:
     pass
 
 from v1.config import load_settings, load_customer_config
-from v1.asr.client import IndicConformerClient
+from v1.asr.client import NemotronASRAdapter
 from v1.decider.gemini_decider import GeminiDecider
 from v1.cleanup.gemini_cleanup import GeminiCleanup
 from v1.agent.system2 import System2Agent
@@ -26,9 +26,9 @@ from v1.tests.test_runner import run_test_suite
 
 
 
-def build_system(settings: dict) -> tuple[IndicConformerClient, Orchestrator]:
+def build_system(settings: dict) -> tuple[NemotronASRAdapter, Orchestrator]:
     vertex_cfg = settings.get("vertex", {})
-    asr_cfg = settings.get("asr", {})
+    dictation_cfg = settings.get("dictation", {})
 
     key_file = Path(vertex_cfg.get("key_file", "../vertex-key.json"))
     if not key_file.is_absolute():
@@ -50,6 +50,7 @@ def build_system(settings: dict) -> tuple[IndicConformerClient, Orchestrator]:
         region=vertex_cfg["region"],
         key_file=key_file,
         model_name=vertex_cfg.get("cleanup_model", "gemini-2.5-flash"),
+        timeout_seconds=dictation_cfg.get("timeout_seconds", 15),
     )
 
     agent = System2Agent(
@@ -66,9 +67,9 @@ def build_system(settings: dict) -> tuple[IndicConformerClient, Orchestrator]:
         agent=agent,
     )
 
-    asr_client = IndicConformerClient(
-        endpoint=asr_cfg["endpoint"],
-        timeout_seconds=asr_cfg.get("timeout_seconds", 30),
+    asr_client = NemotronASRAdapter(
+        model_id=dictation_cfg.get("model_id"),
+        sample_rate=dictation_cfg.get("sample_rate", 16000),
     )
 
     return asr_client, orchestrator
@@ -76,12 +77,12 @@ def build_system(settings: dict) -> tuple[IndicConformerClient, Orchestrator]:
 
 def main():
     parser = argparse.ArgumentParser(
-        description="V1 Modular Voice AI Pipeline (Nepali) - The Branch"
+        description="V1 Modular English Voice AI Pipeline - The Branch"
     )
     parser.add_argument(
         "--input",
         type=str,
-        help="Input Nepali text string or path to a .wav audio file",
+        help="Input English text or path to a .wav audio file",
     )
     parser.add_argument(
         "--config",

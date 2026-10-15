@@ -1,3 +1,3 @@
-from .client import IndicConformerClient
+from .client import NemotronASRAdapter
 
-__all__ = ["IndicConformerClient"]
+__all__ = ["NemotronASRAdapter"]

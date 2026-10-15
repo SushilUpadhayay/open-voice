@@ -28,7 +28,7 @@ ws_handler = DictationWebSocketHandler(
 
 app = FastAPI(
     title="Open Voice Dictation — Streaming Dictation & Wispr Flow Polish",
-    description="Nemotron 3.5 Vulkan ASR + Gemini 2.5 Flash Asia Mumbai Cleanup",
+    description="Parakeet Unified EN Vulkan ASR + Gemini 2.5 Flash Asia Mumbai Cleanup",
     version="3.0.0",
 )
 
@@ -70,7 +70,7 @@ async def get_status():
         "status": "online",
         "version": "v3.0.0",
         "asr": {
-            "model": "nvidia/nemotron-3.5-asr-streaming-0.6b-Q8_0",
+            "model": asr_client.model_id,
             "available": asr_client.is_available(),
             "backend": "Vulkan0 (NVIDIA GPU)",
             "handy_exe": str(asr_client.handy_exe),

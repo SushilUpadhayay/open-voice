@@ -9,7 +9,10 @@ from typing import Dict, Optional, Tuple
 import wave
 
 HANDY_EXE = Path(os.environ.get("LOCALAPPDATA", "")) / "Handy" / "handy.exe"
-DEFAULT_MODEL = "handy-computer/nemotron-3.5-asr-streaming-0.6b-gguf/nemotron-3.5-asr-streaming-0.6b-Q8_0.gguf"
+DEFAULT_MODEL = os.environ.get(
+    "DICTATION_ASR_MODEL",
+    "handy-computer/parakeet-unified-en-0.6b-gguf/parakeet-unified-en-0.6b-Q8_0.gguf",
+)
 
 
 class NemotronASRClient:

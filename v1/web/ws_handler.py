@@ -188,7 +188,7 @@ class V1StreamingWebSocketHandler:
 
             orch_res = OrchestratorResult(
                 branch=branch,
-                output_text=final_output.replace("。", "।"),
+                output_text=final_output,
                 raw_text=full_raw,
                 actions_enabled=actions_enabled,
                 cleanup_enabled=cleanup_enabled,

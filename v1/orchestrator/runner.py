@@ -250,7 +250,7 @@ class Orchestrator:
                 final_text = agent_res.reply
                 command_msg = None
             else:
-                command_msg = f'would call System 2 with raw text: "{raw_text.replace("。", "।")}"'
+                command_msg = f'would call System 2 with raw text: "{raw_text}"'
                 final_text = command_msg
 
         else:
@@ -274,7 +274,7 @@ class Orchestrator:
         total_ms = (time.perf_counter() - start_time) * 1000.0
         result = OrchestratorResult(
             branch=branch,
-            output_text=final_text.replace("。", "।"),
+            output_text=final_text,
             raw_text=raw_text,
             actions_enabled=actions_enabled,
             cleanup_enabled=cleanup_enabled,

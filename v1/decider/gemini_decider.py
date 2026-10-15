@@ -13,24 +13,24 @@ DEFAULT_OPTIONS = ["dictation", "command", "unclear"]
 
 FEW_SHOT_EXAMPLES = {
     "dictation": [
-        "म अहिले गाडी चलाउँदै छु।",
-        "परियोजनाको काम समयमै सकिनेछ।",
-        "आजको मौसम धेरै चिसो छ।",
+        "I am currently driving to the office.",
+        "The project deliverables will be completed on time.",
+        "The weather is quite chilly today.",
     ],
     "command": [
-        "ढोका बन्द गर।",
-        "यो सन्देश तुरुन्तै फरवार्ड गर।",
-        "अलार्म बिहान सात बजेको लगाऊ।",
+        "Close the front door.",
+        "Forward this email to Sarah immediately.",
+        "Set an alarm for seven tomorrow morning.",
     ],
     "unclear": [
-        "त्यहाँ पुगेपछि थाहा हुन्छ।",
-        "सायद अर्को हप्ता।",
-        "सडकको अवस्था।",
+        "We will see once we get there.",
+        "Maybe next week.",
+        "Road conditions.",
     ],
 }
 
-BASE_PROMPT_TEMPLATE = """You are a fast voice router for Nepali speech.
-Decide if the given Nepali text is:
+BASE_PROMPT_TEMPLATE = """You are a fast voice router for English speech.
+Decide if the given English text is:
 {options_desc}
 
 Guidelines:
@@ -39,15 +39,15 @@ Guidelines:
 - "unclear": Incomplete fragments, ambiguous phrases with no clear intent, or text that could equally be either.
 
 Examples:
-- "म अहिले गाडी चलाउँदै छु।" -> dictation
-- "परियोजनाको काम समयमै सकिनेछ।" -> dictation
-- "आजको मौसम धेरै चिसो छ।" -> dictation
-- "ढोका बन्द गर।" -> command
-- "यो सन्देश तुरुन्तै फरवार्ड गर।" -> command
-- "अलार्म बिहान सात बजेको लगाऊ।" -> command
-- "त्यहाँ पुगेपछि थाहा हुन्छ।" -> unclear
-- "सायद अर्को हप्ता।" -> unclear
-- "सडकको अवस्था।" -> unclear
+- "I am currently driving to the office." -> dictation
+- "The project deliverables will be completed on time." -> dictation
+- "The weather is quite chilly today." -> dictation
+- "Close the front door." -> command
+- "Forward this email to Sarah immediately." -> command
+- "Set an alarm for seven tomorrow morning." -> command
+- "We will see once we get there." -> unclear
+- "Maybe next week." -> unclear
+- "Road conditions." -> unclear
 
 Answer with EXACTLY ONE word from the allowed options ({options_list}). No explanation, no punctuation.
 

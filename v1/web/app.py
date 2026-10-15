@@ -76,9 +76,9 @@ asr_client = HandyASRClient(
 )
 tts_client = VertexTTS(
     key_file=key_file,
-    primary_lang="ne-NP",
-    fallback_lang="hi-IN",
-    fallback_voice="hi-IN-Neural2-A",
+    primary_lang="en-US",
+    fallback_lang="en-US",
+    fallback_voice="en-US-Neural2-F",
 )
 
 ws_handler = V1StreamingWebSocketHandler(

@@ -22,7 +22,6 @@ from dictation.cleanup.config import CleanupConfig
 from v1.decider.gemini_decider import GeminiDecider
 from v1.agent.system2 import System2Agent
 from v1.orchestrator.runner import Orchestrator
-from v1.tests.test_runner import run_test_suite
 
 def build_system(settings: dict) -> tuple[HandyASRClient, Orchestrator]:
     vertex_cfg = settings.get("vertex", {})
@@ -108,14 +107,12 @@ def main():
     asr_client, orchestrator = build_system(settings)
 
     if args.test:
-        csv_path = CURRENT_DIR / "tests" / "sentences.csv"
+        from v1.tests.latency_test import run_mode_latency_test
         results_dir = CURRENT_DIR / "results"
-        run_test_suite(
+        run_mode_latency_test(
+            mode="dictation",
             orchestrator=orchestrator,
-            customer_config=customer_cfg,
-            csv_path=csv_path,
             output_dir=results_dir,
-            run_order_test=not args.no_order_test,
         )
         return
 

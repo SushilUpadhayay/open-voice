@@ -7,7 +7,7 @@ from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
-from ..asr.client import NemotronASRClient
+from ..asr.client import HandyASRClient
 from ..cleanup.config import CleanupConfig
 from ..cleanup.engine import WisprFlowCleanupEngine
 from .ws_handler import DictationWebSocketHandler
@@ -18,17 +18,18 @@ FRONTEND_DIR = DICTATION_DIR / "frontend"
 STATIC_DIR = FRONTEND_DIR / "static"
 
 # Initialize ASR & Cleanup
-asr_client = NemotronASRClient()
+asr_client = HandyASRClient()
 cleanup_config = CleanupConfig()
 ws_handler = DictationWebSocketHandler(
     asr_client=asr_client,
     cleanup_config=cleanup_config,
     silence_pause_ms=350.0,
+    session_pause_ms=3000.0,
 )
 
 app = FastAPI(
     title="Open Voice Dictation — Streaming Dictation & Wispr Flow Polish",
-    description="Nemotron 3.5 Vulkan ASR + Gemini 2.5 Flash Asia Mumbai Cleanup",
+    description="Parakeet Unified EN 0.6B ASR + Gemini 2.5 Flash Asia Mumbai Cleanup",
     version="3.0.0",
 )
 
@@ -70,8 +71,11 @@ async def get_status():
         "status": "online",
         "version": "v3.0.0",
         "asr": {
-            "model": "nvidia/nemotron-3.5-asr-streaming-0.6b-Q8_0",
+            "model": asr_client.model_id,
+            "model_name": "Parakeet Unified EN 0.6B",
             "available": asr_client.is_available(),
+            "engine_available": asr_client.handy_exe.exists(),
+            "model_downloaded": asr_client.is_model_downloaded(),
             "backend": "Vulkan0 (NVIDIA GPU)",
             "handy_exe": str(asr_client.handy_exe),
         },
@@ -120,7 +124,7 @@ async def simulate_cleanup(req: SimulationRequest):
 @app.post("/api/transcribe-file")
 async def transcribe_uploaded_file(file: UploadFile = File(...)):
     """
-    Transcribes an uploaded WAV file using Nemotron 3.5 and applies Wispr Flow cleanup.
+    Transcribes an uploaded WAV file using Parakeet Unified EN and applies Wispr Flow cleanup.
     """
     content = await file.read()
     raw_text, asr_lat, rtf = asr_client.transcribe_pcm_bytes(content)

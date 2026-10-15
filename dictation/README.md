@@ -1,6 +1,6 @@
 # Open Voice Dictation — Real-Time Streaming Dictation & Wispr Flow Polish
 
-A next-generation streaming dictation platform combining local **Nemotron 3.5 Vulkan GPU ASR** with **Wispr Flow-style sentence-level cleanup** powered by **Gemini 2.5 Flash in Asia Mumbai (`asia-south1`)**.
+A next-generation streaming dictation platform combining local **Parakeet Unified EN 0.6B Vulkan GPU ASR** with **Wispr Flow-style sentence-level cleanup** powered by **Gemini 2.5 Flash in Asia Mumbai (`asia-south1`)**.
 
 ---
 
@@ -14,7 +14,7 @@ A next-generation streaming dictation platform combining local **Nemotron 3.5 Vu
           │
           ├─► [dictation/backend/vad] (Micro-pause & speech activity detection)
           ▼
-   [dictation/asr (Nemotron 3.5)] ──(Vulkan0 GPU)──► [Live In-Flight Raw Stream (UI)]
+   [dictation/asr (Parakeet Unified EN)] ──(Vulkan0 GPU)──► [Live In-Flight Raw Stream (UI)]
           │ (Raw text tokens)
           ▼
  [dictation/cleanup (Wispr Flow Engine)]
@@ -39,7 +39,7 @@ A next-generation streaming dictation platform combining local **Nemotron 3.5 Vu
 
 ```text
 dictation/
-├── asr/                       # Standalone Nemotron 3.5 ASR & VAD pipeline
+├── asr/                       # Local Handy Parakeet ASR & VAD pipeline
 │   ├── client.py              # Python client (file & in-memory PCM decoding)
 │   ├── run_asr.py             # CLI test runner
 │   ├── Cargo.toml             # Rust dependencies (transcribe-cpp, vad-rs, cpal)
@@ -50,7 +50,7 @@ dictation/
 │   ├── gemini_client.py       # Async Gemini 2.5 Flash client (asia-south1)
 │   ├── prompts.py             # Wispr Flow cleanup instructions
 │   ├── segmenter.py           # Sentence boundary detector (punctuation + VAD pauses)
-│   ├── engine.py              # Concurrent orchestrator (fires LLM alongside Nemotron)
+│   ├── engine.py              # Concurrent orchestrator (fires LLM alongside ASR)
 │   └── test_cleanup.py        # End-to-end simulation test
 ├── backend/                   # Runtime server
 │   ├── app.py                 # FastAPI application (REST APIs + Static mount)
@@ -66,6 +66,8 @@ dictation/
 ---
 
 ## Running the Dictation Service
+
+The default English Parakeet model must be downloaded in Handy before use. The API status endpoint reports whether both Handy and the selected model are available.
 
 Launch the server using `uv` or `.venv`:
 

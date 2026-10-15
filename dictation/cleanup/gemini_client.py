@@ -1,4 +1,5 @@
 import asyncio
+import logging
 from pathlib import Path
 import time
 from typing import Dict, Optional, Tuple
@@ -7,6 +8,9 @@ from google.auth.transport.requests import Request
 from google.oauth2 import service_account
 
 from .config import CleanupConfig
+
+
+logger = logging.getLogger(__name__)
 
 
 class GeminiAsiaMumbaiClient:
@@ -61,7 +65,10 @@ class GeminiAsiaMumbaiClient:
         """
         start = time.perf_counter()
         if not self.endpoint_url:
-            return user_prompt, 0.0, 0.0
+            logger.error(
+                "Gemini cleanup failed status_code=None error_type=EndpointNotConfigured"
+            )
+            return "", 0.0, 0.0
 
         gen_config = {
             "temperature": self.config.temperature,
@@ -78,6 +85,7 @@ class GeminiAsiaMumbaiClient:
             "generationConfig": gen_config,
         }
 
+        response = None
         try:
             response = self.session.post(
                 self.endpoint_url,
@@ -88,7 +96,11 @@ class GeminiAsiaMumbaiClient:
             latency_ms = (time.perf_counter() - start) * 1000.0
 
             if response.status_code != 200:
-                return user_prompt, latency_ms, 0.0
+                logger.error(
+                    "Gemini cleanup failed status_code=%s error_type=HTTPStatusError",
+                    response.status_code,
+                )
+                return "", latency_ms, 0.0
 
             data = response.json()
             candidates = data.get("candidates", [])
@@ -96,18 +108,37 @@ class GeminiAsiaMumbaiClient:
             tps = (output_tokens / (latency_ms / 1000.0)) if latency_ms > 0 else 0.0
 
             if candidates:
-                parts = candidates[0].get("content", {}).get("parts", [])
-                if parts:
-                    return parts[0].get("text", "").strip(), latency_ms, round(tps, 1)
+                candidate = candidates[0]
+                finish_reason = candidate.get("finishReason")
+                if finish_reason in {"MAX_TOKENS", "SAFETY"}:
+                    logger.error(
+                        "Gemini cleanup failed status_code=200 error_type=FinishReason:%s",
+                        finish_reason,
+                    )
+                    return "", latency_ms, round(tps, 1)
 
-            return user_prompt, latency_ms, round(tps, 1)
-        except Exception:
+                parts = candidate.get("content", {}).get("parts", [])
+                if parts:
+                    text = parts[0].get("text", "").strip()
+                    if text:
+                        return text, latency_ms, round(tps, 1)
+
+            logger.error(
+                "Gemini cleanup failed status_code=200 error_type=EmptyCandidate"
+            )
+            return "", latency_ms, round(tps, 1)
+        except Exception as exc:
             latency_ms = (time.perf_counter() - start) * 1000.0
-            return user_prompt, latency_ms, 0.0
+            logger.error(
+                "Gemini cleanup failed status_code=%s error_type=%s",
+                getattr(response, "status_code", None),
+                type(exc).__name__,
+            )
+            return "", latency_ms, 0.0
 
     async def generate_async(self, system_instruction: str, user_prompt: str) -> Tuple[str, float, float]:
         """
         Non-blocking async call executed concurrently in a worker thread.
-        Fires alongside Nemotron ASR without blocking the event loop.
+        Fires alongside local ASR without blocking the event loop.
         """
         return await asyncio.to_thread(self.generate, system_instruction, user_prompt)

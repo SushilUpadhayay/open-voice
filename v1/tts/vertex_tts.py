@@ -10,15 +10,15 @@ from google.auth.transport.requests import Request
 class VertexTTS:
     """
     Google Cloud Text-to-Speech client for synthesizing spoken replies.
-    Supports primary 'ne-NP' and graceful fallback to 'hi-IN' (hi-IN-Neural2-A).
+    Supports primary 'en-US' and fallback voice (e.g. 'en-US-Neural2-F').
     """
 
     def __init__(
         self,
         key_file: Path | str,
-        primary_lang: str = "ne-NP",
-        fallback_lang: str = "hi-IN",
-        fallback_voice: str = "hi-IN-Neural2-A",
+        primary_lang: str = "en-US",
+        fallback_lang: str = "en-US",
+        fallback_voice: str = "en-US-Neural2-F",
         timeout_seconds: int = 15,
     ):
         self.key_file = Path(key_file).resolve()
@@ -47,7 +47,7 @@ class VertexTTS:
 
     def synthesize(self, text: str) -> Tuple[bytes, float]:
         """
-        Synthesizes Nepali text to MP3 audio bytes.
+        Synthesizes English text to MP3 audio bytes.
         Returns:
             Tuple of (audio_bytes, latency_ms)
         """
@@ -58,7 +58,7 @@ class VertexTTS:
         headers = self._get_auth_header()
         start_time = time.perf_counter()
 
-        # Primary attempt (Nepali)
+        # Primary attempt
         payload = {
             "input": {"text": clean_text},
             "voice": {"languageCode": self.primary_lang},

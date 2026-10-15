@@ -18,11 +18,9 @@ class CleanupConfig:
     silence_pause_sec: float = 0.35       # 350ms pause triggers sentence boundary
     min_sentence_words: int = 3           # Minimum words before committing a sentence on pause
     max_sentence_words: int = 15          # Max words before forcing segmentation if no punctuation/pause
-    context_sentence_window: int = 2      # Number of previous polished sentences to feed as context
 
     # Generation parameters
     temperature: float = 0.0
-    max_output_tokens: int = 1024
+    max_output_tokens: int = 256
     thinking_budget: int = 0              # 0 disables reasoning tokens for sub-second cleanup
     timeout_seconds: int = 15
-

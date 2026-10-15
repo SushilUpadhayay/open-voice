@@ -3,7 +3,7 @@ from dataclasses import dataclass
 import time
 from typing import Optional
 
-from .client import NemotronASRClient
+from .client import HandyASRClient
 from .vad import EnergyVAD
 
 
@@ -17,21 +17,26 @@ class ASRChunkResult:
     tps: float = 0.0
 
 
-class NemotronStreamSession:
+class ASRStreamSession:
     """
-    Manages live streaming audio buffering, VAD tracking, and Nemotron ASR decoding.
+    Manages live streaming audio buffering, VAD tracking, and ASR decoding.
     All runtime ASR logic is contained here.
     """
 
     def __init__(
         self,
-        asr_client: Optional[NemotronASRClient] = None,
+        asr_client: Optional[HandyASRClient] = None,
         silence_pause_ms: float = 350.0,
+        session_pause_ms: float = 3000.0,
         min_audio_bytes: int = 22400,       # 0.7s @ 16kHz 16-bit mono
         max_continuous_bytes: int = 96000,  # 3.0s continuous speech threshold
     ):
-        self.asr = asr_client or NemotronASRClient()
-        self.vad = EnergyVAD(min_silence_ms=silence_pause_ms)
+        self.asr = asr_client or HandyASRClient()
+        self.session_pause_ms = session_pause_ms
+        self.vad = EnergyVAD(
+            min_silence_ms=silence_pause_ms,
+            session_pause_ms=session_pause_ms,
+        )
         self.min_audio_bytes = min_audio_bytes
         self.max_continuous_bytes = max_continuous_bytes
 
@@ -76,7 +81,7 @@ class NemotronStreamSession:
 
             audio_duration = len(pcm_data) / 32000.0  # 16000 samples/sec * 2 bytes/sample
 
-            # Execute Nemotron ASR decoding in worker thread
+            # Run local ASR decoding in a worker thread.
             raw_text, latency_ms, rtf = await asyncio.to_thread(
                 self.asr.transcribe_pcm_bytes, pcm_data
             )
@@ -127,8 +132,18 @@ class NemotronStreamSession:
         self.reset()
         return None
 
+    def should_end_session(self) -> bool:
+        """
+        Returns True if a 3-second silence pause (session_pause_ms) has been reached
+        after active speech has occurred.
+        """
+        return self.vad.is_session_pause()
+
     def reset(self):
         self.audio_buffer.clear()
         self.has_spoken = False
         self.vad.reset()
         self.last_transcribe_time = time.perf_counter()
+
+
+NemotronStreamSession = ASRStreamSession

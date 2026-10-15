@@ -24,13 +24,14 @@ for p in [str(WORKSPACE_ROOT), str(V1_DIR)]:
         sys.path.insert(0, p)
 
 from v1.config import load_settings
-from v1.asr.client import NemotronASRAdapter
+from dictation.asr.client import HandyASRClient
+from dictation.cleanup.config import CleanupConfig
 from v1.decider.gemini_decider import GeminiDecider
-from v1.cleanup.gemini_cleanup import GeminiCleanup
 from v1.agent.system2 import System2Agent
 from v1.orchestrator.runner import Orchestrator
 from v1.tts.vertex_tts import VertexTTS
 from v1.web.cards import build_card_data
+from v1.web.ws_handler import V1StreamingWebSocketHandler
 
 # Initialize components
 settings = load_settings()
@@ -49,10 +50,10 @@ decider = GeminiDecider(
     key_file=key_file,
     model_name=vertex_cfg.get("decider_model", "gemini-2.5-flash"),
 )
-cleanup = GeminiCleanup(
+cleanup_cfg = CleanupConfig(
     project_id=vertex_cfg["project_id"],
     region=vertex_cfg["region"],
-    key_file=key_file,
+    key_file=str(key_file),
     model_name=vertex_cfg.get("cleanup_model", "gemini-2.5-flash"),
     timeout_seconds=dictation_cfg.get("timeout_seconds", 15),
 )
@@ -65,11 +66,11 @@ agent = System2Agent(
 )
 orchestrator = Orchestrator(
     decider=decider,
-    cleanup=cleanup,
     settings=settings,
+    cleanup_config=cleanup_cfg,
     agent=agent,
 )
-asr_client = NemotronASRAdapter(
+asr_client = HandyASRClient(
     model_id=dictation_cfg.get("model_id"),
     sample_rate=dictation_cfg.get("sample_rate", 16000),
 )
@@ -80,12 +81,10 @@ tts_client = VertexTTS(
     fallback_voice="hi-IN-Neural2-A",
 )
 
-from v1.web.ws_handler import V1StreamingWebSocketHandler
-
 ws_handler = V1StreamingWebSocketHandler(
     orchestrator=orchestrator,
-    asr_client=asr_client.client,
-    cleanup_config=cleanup.config,
+    asr_client=asr_client,
+    cleanup_config=cleanup_cfg,
     silence_pause_ms=350.0,
     session_pause_ms=3000.0,
 )
@@ -166,7 +165,7 @@ async def process_input(
             tmp_path = Path(tmp.name)
 
         try:
-            raw_text, asr_latency_ms = asr_client.transcribe(tmp_path)
+            raw_text, asr_latency_ms, _ = asr_client.transcribe_wav_file(tmp_path)
         finally:
             if tmp_path.exists():
                 try:

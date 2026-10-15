@@ -17,16 +17,14 @@ except ImportError:
     pass
 
 from v1.config import load_settings, load_customer_config
-from v1.asr.client import NemotronASRAdapter
+from dictation.asr.client import HandyASRClient
+from dictation.cleanup.config import CleanupConfig
 from v1.decider.gemini_decider import GeminiDecider
-from v1.cleanup.gemini_cleanup import GeminiCleanup
 from v1.agent.system2 import System2Agent
 from v1.orchestrator.runner import Orchestrator
 from v1.tests.test_runner import run_test_suite
 
-
-
-def build_system(settings: dict) -> tuple[NemotronASRAdapter, Orchestrator]:
+def build_system(settings: dict) -> tuple[HandyASRClient, Orchestrator]:
     vertex_cfg = settings.get("vertex", {})
     dictation_cfg = settings.get("dictation", {})
 
@@ -45,10 +43,10 @@ def build_system(settings: dict) -> tuple[NemotronASRAdapter, Orchestrator]:
         model_name=vertex_cfg.get("decider_model", "gemini-2.5-flash-lite"),
     )
 
-    cleanup = GeminiCleanup(
+    cleanup_cfg = CleanupConfig(
         project_id=vertex_cfg["project_id"],
         region=vertex_cfg["region"],
-        key_file=key_file,
+        key_file=str(key_file),
         model_name=vertex_cfg.get("cleanup_model", "gemini-2.5-flash"),
         timeout_seconds=dictation_cfg.get("timeout_seconds", 15),
     )
@@ -62,12 +60,12 @@ def build_system(settings: dict) -> tuple[NemotronASRAdapter, Orchestrator]:
 
     orchestrator = Orchestrator(
         decider=decider,
-        cleanup=cleanup,
         settings=settings,
+        cleanup_config=cleanup_cfg,
         agent=agent,
     )
 
-    asr_client = NemotronASRAdapter(
+    asr_client = HandyASRClient(
         model_id=dictation_cfg.get("model_id"),
         sample_rate=dictation_cfg.get("sample_rate", 16000),
     )
@@ -133,7 +131,7 @@ def main():
     candidate_audio = Path(input_str)
     if candidate_audio.exists() and candidate_audio.suffix.lower() == ".wav":
         print(f"[ASR] Transcribing audio: {candidate_audio} ...")
-        raw_text, asr_latency_ms = asr_client.transcribe(candidate_audio)
+        raw_text, asr_latency_ms, _ = asr_client.transcribe_wav_file(candidate_audio)
         print(f"[ASR] Transcribed text ({asr_latency_ms:.1f}ms): {raw_text}")
     else:
         raw_text = input_str

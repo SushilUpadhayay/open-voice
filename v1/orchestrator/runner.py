@@ -1,12 +1,34 @@
+import asyncio
+import concurrent.futures
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass
 from datetime import datetime
-from typing import Any, Dict, Optional
+import logging
 import time
+from typing import Any, Dict, Optional, Tuple
 
 from ..decider.interface import Decider, DecisionResult
-from ..cleanup.gemini_cleanup import GeminiCleanup
 from ..agent.system2 import System2Agent, AgentResult
+
+from dictation.cleanup.config import CleanupConfig
+from dictation.cleanup.engine import WisprFlowCleanupEngine
+from dictation.cleanup.gemini_client import GeminiAsiaMumbaiClient
+
+logger = logging.getLogger(__name__)
+
+
+def _run_async(coro):
+    """Safely executes an async coroutine across sync threads or running event loops."""
+    try:
+        loop = asyncio.get_running_loop()
+    except RuntimeError:
+        loop = None
+
+    if loop and loop.is_running():
+        with concurrent.futures.ThreadPoolExecutor(max_workers=1) as pool:
+            return pool.submit(asyncio.run, coro).result()
+    else:
+        return asyncio.run(coro)
 
 
 @dataclass
@@ -58,20 +80,76 @@ class Orchestrator:
     def __init__(
         self,
         decider: Decider,
-        cleanup: GeminiCleanup,
-        settings: Dict[str, Any],
+        cleanup: Optional[Any] = None,
+        settings: Optional[Dict[str, Any]] = None,
         agent: Optional[System2Agent] = None,
+        cleanup_config: Optional[CleanupConfig] = None,
     ):
+        if isinstance(cleanup, dict) and settings is None:
+            settings, cleanup = cleanup, None
+
         self.decider = decider
         self.cleanup = cleanup
-        self.settings = settings
+        self.settings = settings or {}
         self.agent = agent
-        decider_cfg = settings.get("decider", {})
+
+        # Setup Wispr Flow cleanup configuration and warm client directly
+        if cleanup_config:
+            self.cleanup_config = cleanup_config
+        else:
+            vertex_cfg = self.settings.get("vertex", {})
+            dictation_cfg = self.settings.get("dictation", {})
+            key_file = vertex_cfg.get("key_file", "../vertex-key.json")
+            self.cleanup_config = CleanupConfig(
+                project_id=vertex_cfg.get("project_id", "tpu-project-235909"),
+                region=vertex_cfg.get("region", "asia-south1"),
+                key_file=str(key_file),
+                model_name=vertex_cfg.get("cleanup_model", "gemini-2.5-flash"),
+                timeout_seconds=dictation_cfg.get("timeout_seconds", 15),
+            )
+        self.cleanup_client = GeminiAsiaMumbaiClient(self.cleanup_config)
+
+        decider_cfg = self.settings.get("decider", {})
         self.threshold = float(
             decider_cfg.get("confidence_threshold")
-            or settings.get("vertex", {}).get("confidence_threshold", 0.75)
+            or self.settings.get("vertex", {}).get("confidence_threshold", 0.75)
         )
         self._executor = ThreadPoolExecutor(max_workers=4)
+
+    def clean(self, raw_text: str) -> Tuple[str, float, bool, float, float]:
+        """
+        Cleans dictated speech using the Wispr Flow sentence segmentation and cleanup engine.
+        Returns:
+            (cleaned_text, latency_ms, changed, auth_ms, network_ms)
+        """
+        if self.cleanup is not None and hasattr(self.cleanup, "clean") and self.cleanup != self:
+            return self.cleanup.clean(raw_text)
+
+        raw_trimmed = raw_text.strip()
+        if not raw_trimmed:
+            return "", 0.0, False, 0.0, 0.0
+
+        async def _polish():
+            engine = WisprFlowCleanupEngine(self.cleanup_config)
+            engine.client = self.cleanup_client
+            await engine.feed_typed_text(raw_trimmed)
+            return await engine.finish_and_finalize(run_final_pass=False)
+
+        start_time = time.perf_counter()
+        try:
+            doc = _run_async(_polish())
+            cleaned_text = (doc.get("polished_text") or "").strip()
+        except Exception as exc:
+            logger.error("Wispr Flow cleanup failed: %s; falling back to raw text", exc)
+            cleaned_text = ""
+
+        latency_ms = (time.perf_counter() - start_time) * 1000.0
+        if not cleaned_text:
+            cleaned_text = raw_trimmed
+
+        changed = cleaned_text != raw_trimmed
+        rounded_latency = round(latency_ms, 2)
+        return cleaned_text, rounded_latency, changed, 0.0, rounded_latency
 
     def process(
         self,
@@ -125,7 +203,7 @@ class Orchestrator:
         if cleanup_enabled:
             def _run_cleanup():
                 t_c0 = time.perf_counter()
-                c_text, c_ms, c_chg, c_auth, c_net = self.cleanup.clean(raw_text)
+                c_text, c_ms, c_chg, c_auth, c_net = self.clean(raw_text)
                 cleanup_result_holder["ms"] = (time.perf_counter() - t_c0) * 1000.0
                 cleanup_result_holder["auth_ms"] = c_auth
                 cleanup_result_holder["net_ms"] = c_net
